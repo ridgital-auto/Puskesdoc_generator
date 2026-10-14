@@ -47,19 +47,18 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
   const topics: TutorialTopic[] = [
     {
       id: 'login_sync',
-      title: '1. Google Drive, Cadangan & Sinkronisasi',
+      title: '1. Masuk Google, Cadangan & Sinkronisasi Otomatis',
       category: 'Akun & Cadangan',
       icon: Cloud,
-      summary: 'Cara menautkan Google Drive (pakai OAuth Client ID sendiri) dan mencadangkan data.',
+      summary: 'Cukup masuk dengan Google — cadangan otomatis ditemukan, dipulihkan, dan disinkronkan.',
       content: {
         steps: [
           'Klik tombol "Backup & GDrive" (ikon awan) di bilah navigasi atas, buka tab "Google Drive".',
-          'Ikuti panduan 10 langkah di tab tersebut untuk membuat OAuth Client ID milikmu sendiri di console.cloud.google.com (cukup sekali).',
-          'Tempel Client ID di kolom yang tersedia lalu klik "Simpan Client ID".',
-          'Klik "Hubungkan Google Drive" lalu izinkan akses pada popup Google.',
-          'Setelah terhubung, gunakan "Cadangkan ke Drive" untuk menyimpan seluruh data (profil, variabel, dokumen, template, database, termasuk API key) ke folder "Akreditasi Puskesmas ILP 2026".',
-          'Aktifkan "Auto-Sync" agar cadangan diperbarui otomatis setiap ada perubahan data.',
-          'Untuk memulihkan di perangkat lain: hubungkan Drive di perangkat baru lalu klik "Sinkronkan dari Drive", atau pulihkan file .json via tab "Backup & Restore".',
+          'Klik "Masuk dengan Google", pilih akun Google-mu, lalu centang setuju pada popup Google.',
+          'Aplikasi otomatis mencari file cadangan (puskesdoc_full_backup.json) di Drive-mu.',
+          'Jika cadangan ditemukan, data langsung dipulihkan otomatis dan Auto-Sync diaktifkan.',
+          'Di perangkat baru: cukup masuk dengan akun Google yang sama — semua data ikut pindah sendiri.',
+          'Tombol "Cadangkan ke Drive" / "Sinkronkan dari Drive" tetap tersedia untuk operasi manual.',
         ],
         tips: [
           'Pencadangan berbasis Google Drive memastikan seluruh dokumen, capaian, dan konfigurasi faskes tetap aman dan dapat diakses dari perangkat mana pun.',

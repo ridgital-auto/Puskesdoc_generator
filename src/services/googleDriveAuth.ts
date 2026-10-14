@@ -1,10 +1,10 @@
 /**
  * googleDriveAuth.ts — Autentikasi Google Drive via Google Identity Services (GIS).
  *
- * Alasan: login Firebase bawaan proyek AI Studio tidak bisa dipakai andal di
- * GitHub Pages (token Drive hanya di memori, consent screen bukan milik pengguna).
- * Dengan GIS + OAuth Client ID milik pengguna sendiri, token Drive diminta
- * langsung dari browser dan bisa diperbarui diam-diam selama sesi Google aktif.
+ * Alur baru (Okt 2026): aplikasi memakai SATU OAuth Client ID bersama yang
+ * ditanam di kode, sehingga pengguna cukup klik "Masuk dengan Google" lalu
+ * centang setuju — tanpa perlu membuat Client ID sendiri. Client ID ini
+ * adalah identifier publik (bukan rahasia), aman dipasang di kode client-side.
  */
 import { getGoogleClientId } from '../utils/storage';
 
@@ -16,6 +16,16 @@ declare global {
 
 const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+/** OAuth Client ID bersama (milik pengelola aplikasi). */
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  '909196579559-egqlen997lr6a1jp9nrt0dagqvslksa9.apps.googleusercontent.com';
+
+/** Client ID efektif: setelan pengguna (lanjutan) atau bawaan aplikasi. */
+export function resolveGoogleClientId(): string {
+  const custom = (getGoogleClientId() || '').trim();
+  return custom || DEFAULT_GOOGLE_CLIENT_ID;
+}
 
 let tokenClient: any = null;
 let cachedToken: string | null = null;
@@ -42,10 +52,7 @@ function loadGisScript(): Promise<void> {
 }
 
 function ensureTokenClient(): void {
-  const clientId = (getGoogleClientId() || '').trim();
-  if (!clientId) {
-    throw new Error('OAuth Client ID Google belum diisi. Isi dulu di tab Google Drive bagian bawah.');
-  }
+  const clientId = resolveGoogleClientId();
   if (!tokenClient || tokenClient.__clientId !== clientId) {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
@@ -123,5 +130,19 @@ export function clearDriveToken(): void {
 }
 
 export function hasGoogleClientId(): boolean {
-  return !!(getGoogleClientId() || '').trim();
+  return !!resolveGoogleClientId();
+}
+
+/** Ambil email akun Google dari token Drive (via Drive about API). */
+export async function getDriveUserEmail(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.user?.emailAddress || null;
+  } catch {
+    return null;
+  }
 }

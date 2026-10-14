@@ -4,6 +4,17 @@
  */
 import { getGeminiClient, GEMINI_FLASH_MODEL, AI_KEY_HELP } from './aiAgent';
 
+/**
+ * Alur login Google Drive terbaru (Okt 2026): SATU KLIK.
+ * - Pengguna cukup klik "Masuk dengan Google" di tab Google Drive.
+ * - Aplikasi memakai OAuth Client ID bersama yang sudah ditanam di kode.
+ * - Setelah izin diberikan: aplikasi OTOMATIS mencari puskesdoc_full_backup.json
+ *   di Drive pengguna → bila ada langsung dipulihkan → Auto-Sync diaktifkan.
+ * - Di perangkat baru: login akun Google yang sama → data otomatis ikut.
+ * - Tidak perlu lagi membuat / mengisi OAuth Client ID sendiri.
+ * - Agar email lain bisa login: pengelola menambahkan email tsb sebagai Test user
+ *   di Google Cloud Console → OAuth consent screen (atau Publish app).
+ */
 export const APP_GUIDE_KNOWLEDGE = `
 # Panduan Aplikasi Puskesdoc Generator
 
