@@ -15,6 +15,17 @@ import { getGeminiClient, GEMINI_FLASH_MODEL, AI_KEY_HELP } from './aiAgent';
  * - Agar email lain bisa login: pengelola menambahkan email tsb sebagai Test user
  *   di Google Cloud Console → OAuth consent screen (atau Publish app).
  */
+/**
+ * Pembaruan Okt 2026 (default kosong & fitur baru):
+ * - Database Puskesmas, Pustaka Media, dan Profil Faskes kini mulai KOSONG secara
+ *   default; pengguna mengisi data milik faskesnya sendiri.
+ * - Template: upload Word kini tampil persis sesuai aslinya (high-fidelity) dan
+ *   bisa langsung diedit di preview (klik teksnya). Form template memiliki kolom
+ *   "Kategori Template" (mis. SOP, SK, Dokumen Word Asli).
+ * - Database: tab "Ekstraksi AI dari Berkas" — unggah .docx, lihat "Preview Dokumen
+ *   Asli", klik Ekstrak → hasil tampil sebagai preview rapi; bisa "Generate Ulang"
+ *   dengan perintah perbaikan, "Edit Manual di Form", atau "Simpan ke Database".
+ */
 export const APP_GUIDE_KNOWLEDGE = `
 # Panduan Aplikasi Puskesdoc Generator
 

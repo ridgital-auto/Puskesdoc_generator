@@ -79,6 +79,8 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
 
   // Display mode for templates with original docx: 'original_docx' or 'sections'
   const [docxDisplayMode, setDocxDisplayMode] = useState<'original_docx' | 'sections'>('original_docx');
+  // Version counter: memicu render ulang tampilan asli Word (high-fidelity)
+  const [docxVersion, setDocxVersion] = useState(0);
   
   // Page number currently active in the paper editor
   const [editorActivePage, setEditorActivePage] = useState<number>(1);
@@ -145,6 +147,25 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setSelectedImg(null);
     }
   }, [isEditorOpen]);
+
+  // Render tampilan ASLI Word (high-fidelity via docx-preview) setiap kali
+  // editor dibuka atau dokumen Word diganti. Ini memperbaiki bug: sebelumnya
+  // innerHTML diisi sebelum editor tampil (ref masih null) sehingga kosong.
+  useEffect(() => {
+    if (
+      isEditorOpen &&
+      docxDisplayMode === 'original_docx' &&
+      editingTemplate?.originalDocxBase64 &&
+      docxEditorRef.current
+    ) {
+      const el = docxEditorRef.current;
+      const base64 = editingTemplate.originalDocxBase64;
+      const fallbackHtml = editingTemplate.originalDocxHtml;
+      renderDocxToContainer(base64, el).catch(() => {
+        if (fallbackHtml) el.innerHTML = fallbackHtml;
+      });
+    }
+  }, [isEditorOpen, docxDisplayMode, docxVersion]);
 
   // Click handler on paper editor to select/inspect images
   const handleEditorClick = (e: React.MouseEvent) => {
@@ -597,9 +618,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setEditorViewMode('paper_design');
       setIsCreateChoiceModalOpen(false);
       setIsEditorOpen(true);
-      if (docxEditorRef.current) {
-        docxEditorRef.current.innerHTML = htmlContent;
-      }
+      setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       // Save any extracted embedded images to media library
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
@@ -697,9 +716,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setIsCreateChoiceModalOpen(false);
       setIsMediaDocxPickerOpen(false);
       setIsEditorOpen(true);
-      if (docxEditorRef.current) {
-        docxEditorRef.current.innerHTML = htmlContent;
-      }
+      setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
         docxResult.embeddedImages.forEach((img, idx) => {
@@ -765,9 +782,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
         description: `Format asli diperbarui dari: ${file.name}`,
       });
       setDocxDisplayMode('original_docx');
-      if (docxEditorRef.current) {
-        docxEditorRef.current.innerHTML = docxResult.html;
-      }
+      setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
         docxResult.embeddedImages.forEach((img, idx) => {
@@ -802,6 +817,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     setDocxDisplayMode(clone.originalDocxHtml ? 'original_docx' : 'sections');
     setEditorActivePage(1);
     setIsEditorOpen(true);
+    if (clone.originalDocxBase64) setDocxVersion((v) => v + 1);
   };
 
   // Save from Editor
@@ -1519,7 +1535,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* Basic Template Meta Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Nama Template</span>
@@ -1554,6 +1570,29 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                     <option value="PANDUAN">Panduan Operasional Teknis</option>
                     <option value="CUSTOM">Format Kustom Puskesmas</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Kategori Template
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTemplate.category || ''}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, category: e.target.value })}
+                    list="template-category-suggestions"
+                    placeholder="mis. SOP, Dokumen Word Asli..."
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-medium"
+                  />
+                  <datalist id="template-category-suggestions">
+                    <option value="SOP" />
+                    <option value="SK" />
+                    <option value="KAK" />
+                    <option value="Pedoman" />
+                    <option value="Panduan" />
+                    <option value="Dokumen Word Asli (.docx)" />
+                    <option value="Format Kustom" />
+                  </datalist>
                 </div>
 
                 <div>

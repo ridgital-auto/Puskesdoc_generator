@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Database,
   Plus,
@@ -28,7 +28,7 @@ import {
 import { PuskesmasDatabaseItem, DatabaseCategory, DatabaseMetric, IlpKlaster, MediaItem } from '../types';
 import { getStoredDatabase, saveDatabaseItem, deleteDatabaseItem, resetDatabaseToDefault, getStoredMedia, getStoredAgentConfig } from '../utils/storage';
 import { ILP_KLASTERS } from '../utils/constants';
-import { extractTextFromDocx } from '../utils/docxReader';
+import { extractTextFromDocx, extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
 import { aiAnalyzeDatabaseDocument } from '../lib/aiAgent';
 
 interface DatabasePuskesmasViewProps {
@@ -48,7 +48,21 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
   // Edit / Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PuskesmasDatabaseItem | null>(null);
-  const [modalTab, setModalTab] = useState<'form' | 'ai_extract'>('form');
+  const [modalTab, setModalTab] = useState<'form' | 'ai_extract' | 'ai_result'>('form');
+
+  // Hasil ekstraksi AI (untuk preview sebelum disimpan)
+  interface AiExtractedData {
+    title: string; category: string; period: string; klaster: string;
+    summary: string; notes: string; metrics: DatabaseMetric[];
+  }
+  const [aiExtractResult, setAiExtractResult] = useState<AiExtractedData | null>(null);
+  const [aiRegenPrompt, setAiRegenPrompt] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Preview dokumen asli (high-fidelity) sebelum ekstraksi
+  const [aiDocPreviewBase64, setAiDocPreviewBase64] = useState<string | null>(null);
+  const [showDocPreview, setShowDocPreview] = useState(false);
+  const docPreviewRef = useRef<HTMLDivElement | null>(null);
 
   // Form State for Modal
   const [formTitle, setFormTitle] = useState('');
@@ -80,6 +94,17 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
     setNotice(msg);
     setTimeout(() => setNotice(null), 3500);
   };
+
+  // Render preview dokumen asli (sesuai tampilan Word) saat panel dibuka
+  useEffect(() => {
+    if (showDocPreview && aiDocPreviewBase64 && docPreviewRef.current) {
+      renderDocxToContainer(aiDocPreviewBase64, docPreviewRef.current).catch(() => {
+        if (docPreviewRef.current) {
+          docPreviewRef.current.innerHTML = '<p class="text-xs text-slate-400 p-4">Gagal merender preview dokumen.</p>';
+        }
+      });
+    }
+  }, [showDocPreview, aiDocPreviewBase64]);
 
   // Filtered list
   const filteredList = useMemo(() => {
@@ -126,6 +151,10 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
   // Open Modal for Create
   const handleOpenCreateModal = (preferAi: boolean = false) => {
     setEditingItem(null);
+    setAiExtractResult(null);
+    setAiRegenPrompt('');
+    setAiDocPreviewBase64(null);
+    setShowDocPreview(false);
     setFormTitle('');
     setFormCategory('capaian_program');
     setIsCustomCategoryMode(false);
@@ -194,11 +223,14 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
     if (!file) return;
 
     setUploadedDocName(file.name);
+    setAiDocPreviewBase64(null);
+    setShowDocPreview(false);
     try {
       if (file.name.endsWith('.docx')) {
         triggerNotice(`Mengekstrak teks dari Word: ${file.name}...`);
-        const extracted = await extractTextFromDocx(file);
-        setAiDocText(extracted);
+        const docxResult = await extractDocxAsHtml(file);
+        setAiDocText(docxResult.rawText);
+        if (docxResult.base64) setAiDocPreviewBase64(docxResult.base64);
       } else {
         const text = await file.text();
         setAiDocText(text);
@@ -215,13 +247,16 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
     setUploadedDocName(mediaItem.name);
 
     try {
+      setAiDocPreviewBase64(null);
+      setShowDocPreview(false);
       if (mediaItem.name.endsWith('.docx') || mediaItem.mimeType?.includes('word')) {
         triggerNotice(`Mengunduh dan mengekstrak "${mediaItem.name}" dari Pustaka Media...`);
         const res = await fetch(mediaItem.dataUrl);
         const blob = await res.blob();
         const file = new File([blob], mediaItem.name, { type: mediaItem.mimeType });
-        const extracted = await extractTextFromDocx(file);
-        setAiDocText(extracted);
+        const docxResult = await extractDocxAsHtml(file);
+        setAiDocText(docxResult.rawText);
+        if (docxResult.base64) setAiDocPreviewBase64(docxResult.base64);
       } else if (mediaItem.dataUrl.startsWith('data:text')) {
         const base64Part = mediaItem.dataUrl.split(',')[1];
         const text = atob(base64Part);
@@ -256,18 +291,17 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
 
       if (json.success && json.data) {
         const d = json.data;
-        if (d.title) setFormTitle(d.title);
-        if (d.category) setFormCategory(d.category);
-        if (d.period) setFormPeriod(d.period);
-        if (d.klaster) setFormKlaster(d.klaster);
-        if (d.summary) setFormSummary(d.summary);
-        if (d.notes) setFormNotes(d.notes);
-        if (Array.isArray(d.metrics) && d.metrics.length > 0) {
-          setFormMetrics(d.metrics);
-        }
-
-        setModalTab('form'); // Switch to preview & edit!
-        triggerNotice('Dokumen berhasil dianalisis & diubah menjadi format Database Puskesmas oleh AI!');
+        setAiExtractResult({
+          title: d.title || 'Data Hasil Ekstraksi AI',
+          category: d.category || 'kustom',
+          period: d.period || '',
+          klaster: d.klaster || 'KLASTER_1',
+          summary: d.summary || '',
+          notes: d.notes || '',
+          metrics: Array.isArray(d.metrics) ? d.metrics : [],
+        });
+        setModalTab('ai_result'); // Tampilkan preview hasil ekstrak!
+        triggerNotice('Dokumen berhasil dianalisis AI! Periksa preview hasilnya.');
       } else {
         triggerNotice(`Gagal analisis AI: ${json.error || 'Respon tidak valid'}`);
       }
@@ -276,6 +310,83 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
     } finally {
       setIsAnalyzingAI(false);
     }
+  };
+
+  // Generate ulang hasil ekstraksi dengan prompt yang diedit (dari tab preview hasil)
+  const handleRegenerateExtract = async () => {
+    if (!aiRegenPrompt.trim()) {
+      triggerNotice('Tuliskan perintah/instruksi untuk generate ulang terlebih dahulu!');
+      return;
+    }
+    if (!aiExtractResult) return;
+    setIsRegenerating(true);
+    const agentConfig = getStoredAgentConfig();
+    try {
+      const json = await aiAnalyzeDatabaseDocument({
+        documentText: aiDocText || undefined,
+        customPrompt: `Generate ulang data berikut sesuai perintah ini: "${aiRegenPrompt.trim()}". Perhatikan akurasi nama metrik, angka, status, dan rekomendasi.`,
+        currentData: aiExtractResult,
+        customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
+      });
+      if (json.success && json.data) {
+        const d = json.data;
+        setAiExtractResult({
+          title: d.title || aiExtractResult.title,
+          category: d.category || aiExtractResult.category,
+          period: d.period || aiExtractResult.period,
+          klaster: d.klaster || aiExtractResult.klaster,
+          summary: d.summary || aiExtractResult.summary,
+          notes: d.notes || aiExtractResult.notes,
+          metrics: Array.isArray(d.metrics) && d.metrics.length > 0 ? d.metrics : aiExtractResult.metrics,
+        });
+        setAiRegenPrompt('');
+        triggerNotice('Hasil ekstraksi berhasil di-generate ulang sesuai perintah Anda!');
+      } else {
+        triggerNotice(`Gagal generate ulang: ${json.error || 'Respon tidak valid'}`);
+      }
+    } catch (err: any) {
+      triggerNotice(`Gagal menghubungi server AI: ${err.message}`);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  // Pindahkan hasil preview ke form untuk edit manual
+  const handleResultToForm = () => {
+    if (!aiExtractResult) return;
+    const r = aiExtractResult;
+    setFormTitle(r.title);
+    setFormCategory(r.category);
+    setFormPeriod(r.period);
+    setFormKlaster(r.klaster as IlpKlaster);
+    setFormSummary(r.summary);
+    setFormNotes(r.notes);
+    setFormMetrics(r.metrics.length > 0 ? r.metrics : [{ key: '', value: '', target: '', unit: '%', status: 'tercapai' }]);
+    setModalTab('form');
+  };
+
+  // Simpan langsung hasil ekstraksi ke database
+  const handleSaveExtractResult = () => {
+    if (!aiExtractResult) return;
+    const r = aiExtractResult;
+    const cleanedMetrics = r.metrics.filter((m) => (m.key || '').trim().length > 0);
+    const now = new Date().toISOString();
+    saveDatabaseItem({
+      id: editingItem ? editingItem.id : 'db_' + Date.now(),
+      title: r.title.trim(),
+      category: r.category as DatabaseCategory,
+      period: r.period.trim(),
+      klaster: r.klaster as IlpKlaster,
+      summary: r.summary.trim() || 'Data capaian operasional Puskesmas.',
+      metrics: cleanedMetrics,
+      notes: r.notes.trim(),
+      updatedAt: now,
+      createdAt: editingItem ? editingItem.createdAt : now,
+    });
+    setDatabaseList(getStoredDatabase());
+    setIsModalOpen(false);
+    setAiExtractResult(null);
+    triggerNotice('Hasil ekstraksi AI berhasil disimpan ke Database Puskesmas!');
   };
 
   // AI Refinement / Edit with Custom Prompt
@@ -838,6 +949,20 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
                     <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                     <span>Ekstraksi AI dari Berkas</span>
                   </button>
+                  {aiExtractResult && (
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('ai_result')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        modalTab === 'ai_result'
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-bold'
+                          : 'text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <FileCheck className="w-3.5 h-3.5" />
+                      <span>Hasil Ekstraksi</span>
+                    </button>
+                  )}
                 </div>
 
                 <button
@@ -924,6 +1049,30 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
                   </div>
                 )}
 
+                {/* Preview dokumen asli (sesuai tampilan Word) */}
+                {aiDocPreviewBase64 && (
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setShowDocPreview(!showDocPreview)}
+                      className="w-full flex items-center justify-between p-3 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-indigo-600" />
+                        Preview Dokumen Asli (sesuai tampilan Word)
+                      </span>
+                      <span className="text-[11px] text-indigo-600 font-semibold">
+                        {showDocPreview ? '▾ Sembunyikan' : '▸ Tampilkan'}
+                      </span>
+                    </button>
+                    {showDocPreview && (
+                      <div className="border-t border-slate-200 max-h-96 overflow-y-auto bg-slate-100 p-3">
+                        <div ref={docPreviewRef} className="bg-white shadow-sm rounded" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Textarea for document text */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -985,6 +1134,138 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
                         <span>🚀 Ekstrak ke Format Database via AI</span>
                       </>
                     )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: HASIL EKSTRAKSI AI (PREVIEW) */}
+            {modalTab === 'ai_result' && aiExtractResult && (
+              <div className="p-6 overflow-y-auto space-y-5 flex-1 bg-slate-50/50">
+                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
+                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Preview Hasil Ekstraksi AI</span>
+                  </div>
+                  <p className="text-xs text-emerald-800/80 leading-relaxed mt-1">
+                    Periksa hasil di bawah. Bila kurang tepat, tulis perintah perbaikan lalu klik "Generate Ulang".
+                    Bila sudah sesuai, simpan ke database atau lanjutkan edit manual di form.
+                  </p>
+                </div>
+
+                {/* Ringkasan hasil */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+                  <h3 className="text-sm font-extrabold text-slate-900">{aiExtractResult.title}</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">{aiExtractResult.category}</span>
+                    {aiExtractResult.period && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">{aiExtractResult.period}</span>
+                    )}
+                    {aiExtractResult.klaster && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">{aiExtractResult.klaster.replace('_', ' ')}</span>
+                    )}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {aiExtractResult.metrics.length} indikator
+                    </span>
+                  </div>
+                  {aiExtractResult.summary && (
+                    <p className="text-xs text-slate-600 leading-relaxed">{aiExtractResult.summary}</p>
+                  )}
+
+                  {/* Tabel metrik */}
+                  {aiExtractResult.metrics.length > 0 && (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-600">
+                            <th className="text-left px-3 py-2 font-bold">Indikator</th>
+                            <th className="text-center px-3 py-2 font-bold">Capaian</th>
+                            <th className="text-center px-3 py-2 font-bold">Target</th>
+                            <th className="text-center px-3 py-2 font-bold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {aiExtractResult.metrics.map((m, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/60">
+                              <td className="px-3 py-2 font-medium text-slate-800">{m.key}</td>
+                              <td className="px-3 py-2 text-center font-mono">{m.value}{m.unit ? ` ${m.unit}` : ''}</td>
+                              <td className="px-3 py-2 text-center font-mono text-slate-500">{m.target || '-'}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  m.status === 'tercapai' ? 'bg-emerald-100 text-emerald-800' :
+                                  m.status === 'belum_tercapai' ? 'bg-rose-100 text-rose-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {m.status === 'tercapai' ? 'Tercapai' : m.status === 'belum_tercapai' ? 'Belum' : 'Pantauan'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {aiExtractResult.notes && (
+                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                      <span className="font-bold">Catatan AI: </span>{aiExtractResult.notes}
+                    </div>
+                  )}
+                </div>
+
+                {/* Edit prompt & generate ulang */}
+                <div className="bg-white border border-purple-200 rounded-2xl p-4 space-y-2">
+                  <label className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Perintah Perbaikan / Generate Ulang</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={aiRegenPrompt}
+                      onChange={(e) => setAiRegenPrompt(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleRegenerateExtract()}
+                      placeholder="cth: 'tambahkan target 100% semua indikator', 'kelompokkan per klaster', 'perbaiki angka capaian'..."
+                      className="flex-1 px-3 py-2 text-xs border border-purple-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRegenerateExtract}
+                      disabled={isRegenerating || !aiRegenPrompt.trim()}
+                      className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl shadow-sm transition-all shrink-0 cursor-pointer"
+                    >
+                      {isRegenerating ? (
+                        <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Memproses...</span></>
+                      ) : (
+                        <><Sparkles className="w-3.5 h-3.5" /><span>Generate Ulang</span></>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Aksi */}
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setModalTab('ai_extract')}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl"
+                  >
+                    ← Kembali ke Berkas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResultToForm}
+                    className="px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl cursor-pointer"
+                  >
+                    Edit Manual di Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveExtractResult}
+                    className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-xl shadow-md cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Simpan ke Database</span>
                   </button>
                 </div>
               </div>

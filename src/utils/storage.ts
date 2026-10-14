@@ -290,12 +290,12 @@ export function getStoredMedia(): MediaItem[] {
     const raw = localStorage.getItem(MEDIA_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
     console.error('Failed reading media items from localStorage', e);
   }
-  return DEFAULT_MEDIA_ITEMS;
+  return [];
 }
 
 export function saveMediaItem(item: MediaItem): void {
@@ -328,12 +328,12 @@ export function getStoredDatabase(): PuskesmasDatabaseItem[] {
     const raw = localStorage.getItem(DATABASE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
     console.error('Failed reading database from localStorage', e);
   }
-  return INITIAL_DATABASE_ITEMS;
+  return [];
 }
 
 export function saveDatabaseItem(item: PuskesmasDatabaseItem): void {
