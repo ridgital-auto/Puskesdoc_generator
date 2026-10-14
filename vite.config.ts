@@ -5,6 +5,10 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // Saat deploy ke GitHub Pages, workflow mengisi PAGES_BASE=/Puskesdoc_generator/
+    // supaya file asset dimuat dari alamat yang benar. Kosongkan (= '/') untuk
+    // dijalankan lewat server sendiri / AI Studio seperti biasa.
+    base: process.env.PAGES_BASE || '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

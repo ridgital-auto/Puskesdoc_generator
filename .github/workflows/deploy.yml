@@ -1,0 +1,43 @@
+# Otomatis membangun & menerbitkan aplikasi ke GitHub Pages
+# setiap ada perubahan di branch main.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+      - name: Siapkan Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependensi
+        run: bun install
+      - name: Build untuk GitHub Pages
+        run: bun run build
+        env:
+          PAGES_BASE: /Puskesdoc_generator/
+      - name: Unggah hasil build
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Terbitkan ke GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
