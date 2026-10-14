@@ -12,6 +12,7 @@ import { HelpModal } from './components/HelpModal';
 import { addDataChangeListener } from './utils/storage';
 import { scheduleAutoBackup } from './services/driveSync';
 import { LoginModal } from './components/LoginModal';
+import { LoginScreen } from './components/LoginScreen';
 import { 
   getStoredProfile, 
   saveProfile, 
@@ -28,6 +29,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MainNavTab>('generator');
   const [userAccount, setUserAccount] = useState<UserAccount>(getStoredUserAccount());
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [gateLocked, setGateLocked] = useState<boolean>(() => !getStoredUserAccount().isLoggedIn);
+
+  // Kembali ke halaman login setiap ada logout dari mana pun
+  useEffect(() => {
+    const onLogout = () => setGateLocked(true);
+    window.addEventListener('puskesdoc:logout', onLogout);
+    return () => window.removeEventListener('puskesdoc:logout', onLogout);
+  }, []);
   const [profile, setProfile] = useState<FaskesProfile>(getStoredProfile());
   const [variables, setVariables] = useState<VariableItem[]>(getStoredVariables());
   const [customTypes, setCustomTypes] = useState<CustomDocTypeDefinition[]>(getStoredCustomTypes());
@@ -168,6 +177,16 @@ export default function App() {
     setCustomTypes(getStoredCustomTypes());
     setUserAccount(getStoredUserAccount());
   };
+
+  const handleGateLogin = () => {
+    handleDataRestored();
+    setGateLocked(false);
+  };
+
+  // Gerbang login: tampil sebelum generator
+  if (gateLocked) {
+    return <LoginScreen onLoginSuccess={handleGateLogin} />;
+  }
 
   return (
     <div className="min-h-screen holo-gradient flex flex-col font-sans">

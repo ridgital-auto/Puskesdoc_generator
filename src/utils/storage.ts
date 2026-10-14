@@ -457,6 +457,9 @@ export function logoutUserAccount(): void {
     isLoggedIn: false,
     autoSyncGDrive: false,
   });
+  try {
+    window.dispatchEvent(new Event('puskesdoc:logout'));
+  } catch { /* abaikan */ }
 }
 
 // ==========================================
