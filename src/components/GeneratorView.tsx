@@ -42,7 +42,8 @@ import {
   DocumentSection,
   DocumentTemplate,
   PuskesmasDatabaseItem,
-  CustomAgentConfig
+  CustomAgentConfig,
+  SectionImage
 } from '../types';
 import { ILP_KLASTERS } from '../utils/constants';
 import { 
@@ -68,6 +69,7 @@ import {
 import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
 import { aiGenerateDocument, aiExecuteBracketPrompt } from '../lib/aiAgent';
+import { AGENT_PRESETS } from '../lib/agentPresets';
 import { PaperSizeSelector } from './PaperSizeSelector';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
