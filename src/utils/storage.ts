@@ -1,4 +1,16 @@
 import { FaskesProfile, VariableItem, PuskesDoc, CanvasTemplate, CustomAgentConfig, CustomDocTypeDefinition, DocumentTemplate, MediaItem, PuskesmasDatabaseItem } from '../types';
+
+// Listener perubahan data (untuk sinkronisasi otomatis, dll).
+type DataChangeListener = () => void;
+const dataChangeListeners: DataChangeListener[] = [];
+export function addDataChangeListener(fn: DataChangeListener): void {
+  dataChangeListeners.push(fn);
+}
+export function notifyDataChanged(): void {
+  dataChangeListeners.forEach((fn) => {
+    try { fn(); } catch { /* abaikan */ }
+  });
+}
 import { DEFAULT_FASKES_PROFILE, INITIAL_VARIABLES, DEFAULT_CUSTOM_DOC_TYPES, DEFAULT_DOCUMENT_TEMPLATES, DEFAULT_LOGO_PEMDA, DEFAULT_LOGO_PUSKESMAS, INITIAL_DATABASE_ITEMS } from './constants';
 
 const PROFILE_KEY = 'puskesdoc_faskes_profile';
@@ -25,6 +37,7 @@ export function getStoredProfile(): FaskesProfile {
 
 export function saveProfile(profile: FaskesProfile): void {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  notifyDataChanged();
 }
 
 export function getStoredVariables(): VariableItem[] {
@@ -39,6 +52,7 @@ export function getStoredVariables(): VariableItem[] {
 
 export function saveVariables(vars: VariableItem[]): void {
   localStorage.setItem(VARIABLES_KEY, JSON.stringify(vars));
+  notifyDataChanged();
 }
 
 export function getStoredDocuments(): PuskesDoc[] {
@@ -60,6 +74,7 @@ export function saveDocument(doc: PuskesDoc): void {
     docs.unshift(doc);
   }
   localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(docs));
+  notifyDataChanged();
 }
 
 export function deleteDocument(docId: string): void {
@@ -86,6 +101,7 @@ export function saveCanvasTemplate(template: CanvasTemplate): void {
     templates.unshift(template);
   }
   localStorage.setItem(CANVAS_TEMPLATES_KEY, JSON.stringify(templates));
+  notifyDataChanged();
 }
 
 export function getStoredDocumentTemplates(): DocumentTemplate[] {
@@ -110,6 +126,7 @@ export function saveDocumentTemplate(template: DocumentTemplate): void {
     templates.unshift({ ...template, updatedAt: new Date().toISOString() });
   }
   localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(templates));
+  notifyDataChanged();
 }
 
 export function deleteDocumentTemplate(templateId: string): void {
@@ -155,6 +172,59 @@ export function saveGeminiApiKey(key: string): void {
   localStorage.setItem(GEMINI_API_KEY_KEY, (key || '').trim());
 }
 
+// OAuth Client ID Google milik pengguna (untuk Google Drive via GIS)
+const GOOGLE_CLIENT_ID_KEY = 'puskesdoc_google_client_id';
+export function getGoogleClientId(): string {
+  try {
+    return localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '';
+  } catch (e) {
+    console.error('Failed reading google client id from localStorage', e);
+    return '';
+  }
+}
+export function saveGoogleClientId(clientId: string): void {
+  localStorage.setItem(GOOGLE_CLIENT_ID_KEY, (clientId || '').trim());
+}
+
+// Ukuran kertas untuk ekspor Word (.docx)
+export type PaperSizeId = 'a4' | 'f4' | 'letter' | 'legal' | 'custom';
+export interface PaperSizeSetting {
+  id: PaperSizeId;
+  widthMm: number;
+  heightMm: number;
+}
+const PAPER_SIZE_KEY = 'puskesdoc_paper_size';export const PAPER_SIZE_PRESETS: Record<Exclude<PaperSizeId, 'custom'>, { label: string; widthMm: number; heightMm: number }> = {
+  a4: { label: 'A4 (210 × 297 mm)', widthMm: 210, heightMm: 297 },
+  f4: { label: 'F4 / Folio (210 × 330 mm)', widthMm: 210, heightMm: 330 },
+  letter: { label: 'Letter (216 × 279 mm)', widthMm: 215.9, heightMm: 279.4 },
+  legal: { label: 'Legal (216 × 356 mm)', widthMm: 215.9, heightMm: 355.6 },
+};
+export function getPaperSize(): PaperSizeSetting {
+  try {
+    const raw = localStorage.getItem(PAPER_SIZE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.widthMm > 0 && parsed.heightMm > 0) return parsed as PaperSizeSetting;
+    }
+  } catch (e) {
+    console.error('Failed reading paper size from localStorage', e);
+  }
+  return { id: 'a4', widthMm: 210, heightMm: 297 };
+}
+export function savePaperSize(setting: PaperSizeSetting): void {
+  localStorage.setItem(PAPER_SIZE_KEY, JSON.stringify(setting));
+}
+/** Konversi ukuran kertas ke twips (satuan docx): 1 mm = 56.6929 twips */
+export function paperSizeToTwips(setting: PaperSizeSetting): { width: number; height: number } {
+  const preset = setting.id !== 'custom' ? PAPER_SIZE_PRESETS[setting.id] : null;
+  const wMm = preset ? preset.widthMm : setting.widthMm;
+  const hMm = preset ? preset.heightMm : setting.heightMm;
+  return {
+    width: Math.round(wMm * 56.6929),
+    height: Math.round(hMm * 56.6929),
+  };
+}
+
 export function getStoredCustomTypes(): CustomDocTypeDefinition[] {
   try {
     const raw = localStorage.getItem(CUSTOM_TYPES_KEY);
@@ -167,6 +237,7 @@ export function getStoredCustomTypes(): CustomDocTypeDefinition[] {
 
 export function saveCustomTypes(types: CustomDocTypeDefinition[]): void {
   localStorage.setItem(CUSTOM_TYPES_KEY, JSON.stringify(types));
+  notifyDataChanged();
 }
 
 export interface GDriveSettings {
@@ -236,6 +307,7 @@ export function saveMediaItem(item: MediaItem): void {
     list.unshift(item);
   }
   localStorage.setItem(MEDIA_KEY, JSON.stringify(list));
+  notifyDataChanged();
 }
 
 export function deleteMediaItem(itemId: string): void {
@@ -273,6 +345,7 @@ export function saveDatabaseItem(item: PuskesmasDatabaseItem): void {
     list.unshift(item);
   }
   localStorage.setItem(DATABASE_KEY, JSON.stringify(list));
+  notifyDataChanged();
 }
 
 export function deleteDatabaseItem(itemId: string): void {
@@ -282,6 +355,7 @@ export function deleteDatabaseItem(itemId: string): void {
 
 export function saveAllDatabase(items: PuskesmasDatabaseItem[]): void {
   localStorage.setItem(DATABASE_KEY, JSON.stringify(items));
+  notifyDataChanged();
 }
 
 export function resetDatabaseToDefault(): PuskesmasDatabaseItem[] {
@@ -309,6 +383,8 @@ export function exportBackupJSON(): string {
     canvasTemplates: getStoredCanvasTemplates(),
     customTypes: getStoredCustomTypes(),
     agentConfig: getStoredAgentConfig(),
+    geminiApiKey: getGeminiApiKey(),
+    paperSize: getPaperSize(),
     media: getStoredMedia(),
     database: getStoredDatabase(),
     docHistory: getStoredDocHistory(),
@@ -328,6 +404,8 @@ export function importBackupJSON(jsonStr: string): boolean {
     if (data.canvasTemplates) localStorage.setItem(CANVAS_TEMPLATES_KEY, JSON.stringify(data.canvasTemplates));
     if (data.customTypes) saveCustomTypes(data.customTypes);
     if (data.agentConfig) saveAgentConfig(data.agentConfig);
+    if (data.geminiApiKey) saveGeminiApiKey(data.geminiApiKey);
+    if (data.paperSize) savePaperSize(data.paperSize);
     if (data.media) saveAllMedia(data.media);
     if (data.database && Array.isArray(data.database)) saveAllDatabase(data.database);
     if (data.docHistory && Array.isArray(data.docHistory)) localStorage.setItem(DOC_HISTORY_KEY, JSON.stringify(data.docHistory));
@@ -421,6 +499,7 @@ export function saveDocHistoryItem(item: DocHistoryItem): void {
   const filtered = history.filter((h) => h.title.trim().toLowerCase() !== item.title.trim().toLowerCase());
   filtered.unshift(item);
   localStorage.setItem(DOC_HISTORY_KEY, JSON.stringify(filtered.slice(0, 50))); // Keep last 50
+  notifyDataChanged();
 }
 
 export function clearDocHistory(): void {

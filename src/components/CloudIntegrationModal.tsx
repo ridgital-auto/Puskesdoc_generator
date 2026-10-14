@@ -25,6 +25,8 @@ import {
   saveAgentConfig, 
   getGeminiApiKey,
   saveGeminiApiKey,
+  getGoogleClientId,
+  saveGoogleClientId,
   exportBackupJSON, 
   importBackupJSON,
   getStoredUserAccount,
@@ -34,8 +36,7 @@ import {
 import { CustomAgentConfig, PuskesDoc, FaskesProfile } from '../types';
 import { 
   googleSignIn, 
-  logout as googleLogout, 
-  getAccessToken 
+  logout as googleLogout
 } from '../services/googleAuth';
 import { 
   listGoogleDriveDocs, 
@@ -46,6 +47,16 @@ import {
   loadLatestBackupFromGoogleDrive,
   DriveFileItem 
 } from '../services/googleDrive';
+import {
+  connectDriveInteractive,
+  ensureDriveToken,
+  clearDriveToken,
+} from '../services/googleDriveAuth';
+import {
+  isAutoSyncEnabled,
+  setAutoSyncEnabled,
+  getLastSyncAt,
+} from '../services/driveSync';
 
 interface CloudIntegrationModalProps {
   isOpen: boolean;
@@ -82,12 +93,19 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
   const [testStatus, setTestStatus] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [geminiKey, setGeminiKey] = useState(getGeminiApiKey());
+  const [googleClientId, setGoogleClientId] = useState(getGoogleClientId());
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [showClientIdGuide, setShowClientIdGuide] = useState(false);
+  const [autoSync, setAutoSync] = useState(isAutoSyncEnabled());
+  const [lastSync, setLastSync] = useState<string | null>(getLastSyncAt());
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setUserAccount(getStoredUserAccount());
-      getAccessToken().then((token) => {
+      setGoogleClientId(getGoogleClientId());
+      // Coba ambil token Drive diam-diam (tanpa popup) bila sesi Google masih valid
+      ensureDriveToken().then((token) => {
         setAccessToken(token);
         if (token) {
           loadDriveFiles(token);
@@ -103,7 +121,41 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
     setTimeout(() => setSaveNotification(null), 3500);
   };
 
-  const handleGoogleSignIn = async () => {
+  /** Token Drive yang masih berlaku (refresh diam-diam bila perlu). */
+  const getValidDriveToken = async (): Promise<string | null> => {
+    const token = await ensureDriveToken();
+    setAccessToken(token);
+    return token;
+  };
+
+  const handleConnectDrive = async () => {
+    if (!(getGoogleClientId() || '').trim()) {
+      alert('Isi dulu OAuth Client ID Google di bagian bawah tab ini, lalu simpan.');
+      setShowClientIdGuide(true);
+      return;
+    }
+    setIsConnectingDrive(true);
+    try {
+      const token = await connectDriveInteractive();
+      setAccessToken(token);
+      triggerNotice('Google Drive berhasil ditautkan!');
+      loadDriveFiles(token);
+    } catch (err: any) {
+      alert(`Gagal menautkan Google Drive: ${err.message}`);
+    } finally {
+      setIsConnectingDrive(false);
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    clearDriveToken();
+    setAccessToken(null);
+    setDriveFiles([]);
+    triggerNotice('Koneksi Google Drive diputus.');
+  };
+
+  /** Login akun pengguna via Firebase (untuk identitas, terpisah dari Drive). */
+  const handleUserGoogleSignIn = async () => {
     setIsAuthenticating(true);
     try {
       const res = await googleSignIn();
@@ -118,9 +170,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
         };
         saveUserAccount(updated);
         setUserAccount(updated);
-        setAccessToken(res.accessToken);
         triggerNotice(`Berhasil masuk dengan akun Google: ${email}`);
-        loadDriveFiles(res.accessToken);
       }
     } catch (err: any) {
       alert(`Gagal login Google: ${err.message}`);
@@ -139,7 +189,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
   };
 
   const loadDriveFiles = async (token?: string) => {
-    const t = token || accessToken;
+    const t = token || (await getValidDriveToken());
     if (!t) return;
     setIsLoadingDriveFiles(true);
     try {
@@ -154,8 +204,9 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Save current active document to Google Drive
   const handleSaveCurrentDocToDrive = async () => {
-    if (!accessToken) {
-      alert('Silakan login dengan Google terlebih dahulu.');
+    const token = await getValidDriveToken();
+    if (!token) {
+      alert('Hubungkan Google Drive terlebih dahulu.');
       return;
     }
     if (!currentDoc) {
@@ -164,10 +215,10 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
     }
     setIsSavingToDrive(true);
     try {
-      const res = await saveDocToGoogleDrive(accessToken, currentDoc);
+      const res = await saveDocToGoogleDrive(token, currentDoc);
       if (res.success) {
         triggerNotice(`Dokumen "${res.fileName}" berhasil disimpan di Google Drive!`);
-        loadDriveFiles(accessToken);
+        loadDriveFiles(token);
       }
     } catch (err: any) {
       alert(`Gagal menyimpan ke Google Drive: ${err.message}`);
@@ -178,17 +229,19 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Save Full App Backup to Google Drive
   const handleSaveAppBackupToDrive = async () => {
-    if (!accessToken) {
-      alert('Silakan login dengan Google terlebih dahulu.');
+    const token = await getValidDriveToken();
+    if (!token) {
+      alert('Hubungkan Google Drive terlebih dahulu.');
       return;
     }
     setIsSyncingBackup(true);
     try {
       const backupStr = exportBackupJSON();
-      const res = await saveAppBackupToGoogleDrive(accessToken, backupStr);
+      const res = await saveAppBackupToGoogleDrive(token, backupStr);
       if (res.success) {
         triggerNotice('Cadangan lengkap data Puskesmas berhasil disimpan di Google Drive!');
-        loadDriveFiles(accessToken);
+        setLastSync(getLastSyncAt());
+        loadDriveFiles(token);
       }
     } catch (err: any) {
       alert(`Gagal mencadangkan ke Google Drive: ${err.message}`);
@@ -199,13 +252,14 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Restore Full App Backup from Google Drive
   const handleRestoreBackupFromDrive = async () => {
-    if (!accessToken) {
-      alert('Silakan login dengan Google terlebih dahulu.');
+    const token = await getValidDriveToken();
+    if (!token) {
+      alert('Hubungkan Google Drive terlebih dahulu.');
       return;
     }
     setIsSyncingBackup(true);
     try {
-      const backupStr = await loadLatestBackupFromGoogleDrive(accessToken);
+      const backupStr = await loadLatestBackupFromGoogleDrive(token);
       if (!backupStr) {
         alert('Tidak ditemukan berkas cadangan "puskesdoc_full_backup.json" di Google Drive.');
         return;
@@ -226,9 +280,10 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Load document from Drive
   const handleImportDocFromDrive = async (fileId: string) => {
-    if (!accessToken) return;
+    const token = await getValidDriveToken();
+    if (!token) return;
     try {
-      const doc = await loadDocFromGoogleDrive(accessToken, fileId);
+      const doc = await loadDocFromGoogleDrive(token, fileId);
       if (doc && onLoadDocFromCloud) {
         onLoadDocFromCloud(doc);
         triggerNotice(`Dokumen "${doc.title}" berhasil dimuat ke editor!`);
@@ -241,12 +296,13 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Delete document from Drive
   const handleDeleteDocFromDrive = async (fileId: string, fileName: string) => {
-    if (!accessToken) return;
+    const token = await getValidDriveToken();
+    if (!token) return;
     try {
-      const ok = await deleteDocFromGoogleDrive(accessToken, fileId, fileName);
+      const ok = await deleteDocFromGoogleDrive(token, fileId, fileName);
       if (ok) {
         triggerNotice(`Dokumen "${fileName}" telah dihapus dari Google Drive`);
-        loadDriveFiles(accessToken);
+        loadDriveFiles(token);
       }
     } catch (err: any) {
       alert(`Gagal menghapus file: ${err.message}`);
@@ -378,7 +434,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
               </button>
             ) : (
               <button
-                onClick={handleGoogleSignIn}
+                onClick={handleUserGoogleSignIn}
                 disabled={isAuthenticating}
                 className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-xs transition-all hover:border-purple-300 cursor-pointer"
               >
@@ -467,6 +523,28 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
                         Cadangkan ke Drive
                       </button>
 
+                      <label
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg cursor-pointer"
+                        title="Otomatis cadangkan ke Drive setiap ada perubahan data (maks. 1x per 2 menit)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={autoSync}
+                          onChange={(e) => {
+                            setAutoSyncEnabled(e.target.checked);
+                            setAutoSync(e.target.checked);
+                            triggerNotice(e.target.checked ? 'Sinkronisasi otomatis AKTIF.' : 'Sinkronisasi otomatis MATI.');
+                          }}
+                          className="w-3.5 h-3.5 accent-teal-600"
+                        />
+                        Auto-Sync
+                        {lastSync && (
+                          <span className="font-normal text-slate-400">
+                            ({new Date(lastSync).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})
+                          </span>
+                        )}
+                      </label>
+
                       <button
                         onClick={handleRestoreBackupFromDrive}
                         disabled={isSyncingBackup}
@@ -493,20 +571,72 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
               </div>
 
               {!accessToken ? (
-                <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-3">
-                  <HardDrive className="w-10 h-10 text-slate-300 mx-auto" />
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800">Tautkan Akun Google Drive</h4>
-                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1">
-                      Masuk dengan Google untuk membaca dan menyimpan dokumen akreditasi serta cadangan aplikasi secara langsung di Google Drive akun Anda.
-                    </p>
+                <div className="space-y-3">
+                  <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-3">
+                    <HardDrive className="w-10 h-10 text-slate-300 mx-auto" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800">Tautkan Akun Google Drive</h4>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1">
+                        Menghubungkan memakai OAuth Client ID milikmu sendiri (aman & permanen).
+                        Isi Client ID di bawah, simpan, lalu klik Hubungkan.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleConnectDrive}
+                      disabled={isConnectingDrive}
+                      className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl shadow-sm cursor-pointer"
+                    >
+                      {isConnectingDrive ? 'Menghubungkan...' : 'Hubungkan Google Drive'}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleGoogleSignIn}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-sm cursor-pointer"
-                  >
-                    Masuk dengan Google
-                  </button>
+
+                  {/* Setup OAuth Client ID */}
+                  <div className="p-4 rounded-xl bg-sky-50/60 border border-sky-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">OAuth Client ID Google (milik sendiri)</span>
+                      <button
+                        onClick={() => setShowClientIdGuide(!showClientIdGuide)}
+                        className="text-[11px] font-semibold text-sky-700 hover:underline cursor-pointer"
+                      >
+                        {showClientIdGuide ? 'Sembunyikan panduan' : 'Lihat panduan pembuatan'}
+                      </button>
+                    </div>
+                    {showClientIdGuide && (
+                      <ol className="text-[11px] text-slate-600 leading-relaxed ml-4 list-decimal space-y-1 bg-white p-3 rounded-lg border border-sky-100">
+                        <li>Buka <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" className="text-sky-700 font-semibold hover:underline">console.cloud.google.com</a> (login akun Google-mu).</li>
+                        <li>Buat <strong>Project baru</strong> (atau pilih yang sudah ada).</li>
+                        <li>Buka <strong>API & Services → Library</strong>, cari <strong>"Google Drive API"</strong> → klik <strong>Enable</strong>.</li>
+                        <li>Buka <strong>API & Services → OAuth consent screen</strong> → pilih <strong>External</strong> → isi nama aplikasi → <strong>Save</strong>.</li>
+                        <li>Di tab <strong>Audience</strong>, tambahkan email-mu sebagai <strong>Test user</strong> → Save.</li>
+                        <li>Buka <strong>API & Services → Credentials</strong> → <strong>Create Credentials → OAuth client ID</strong>.</li>
+                        <li>Pilih tipe <strong>Web application</strong>, beri nama mis. "Puskesdoc".</li>
+                        <li>Di <strong>Authorized JavaScript origins</strong> klik <strong>Add URI</strong> lalu isi persis:<br />
+                          <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-sky-800">https://ridgital-auto.github.io</code>
+                        </li>
+                        <li>Klik <strong>Create</strong> → salin <strong>Client ID</strong> yang muncul.</li>
+                        <li>Tempel Client ID di kolom bawah lalu klik <strong>Simpan Client ID</strong>.</li>
+                      </ol>
+                    )}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={googleClientId}
+                        onChange={(e) => setGoogleClientId(e.target.value)}
+                        placeholder="xxxx.apps.googleusercontent.com"
+                        className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                      />
+                      <button
+                        onClick={() => {
+                          saveGoogleClientId(googleClientId);
+                          triggerNotice(googleClientId.trim() ? 'Client ID Google disimpan!' : 'Client ID dikosongkan.');
+                        }}
+                        className="px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm cursor-pointer shrink-0"
+                      >
+                        Simpan Client ID
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Client ID hanya tersimpan di browser ini.</p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -515,6 +645,14 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
                       <FileText className="w-3.5 h-3.5 text-purple-600" />
                       Daftar Dokumen Tersimpan di Google Drive ({driveFiles.length})
                     </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={handleDisconnectDrive}
+                        className="px-2.5 py-1 text-xs font-semibold text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-lg cursor-pointer"
+                        title="Putuskan koneksi Google Drive"
+                      >
+                        Putuskan
+                      </button>
                     <button
                       onClick={() => loadDriveFiles()}
                       disabled={isLoadingDriveFiles}
@@ -523,6 +661,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
                       <RefreshCw className={`w-3 h-3 ${isLoadingDriveFiles ? 'animate-spin' : ''}`} />
                       Segarkan
                     </button>
+                    </div>
                   </div>
 
                   {isLoadingDriveFiles ? (

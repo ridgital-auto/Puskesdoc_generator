@@ -11,6 +11,23 @@ import {
   BorderStyle,
 } from 'docx';
 import { PuskesDoc, FaskesProfile } from '../types';
+import { getPaperSize, paperSizeToTwips } from './storage';
+
+/** Properti halaman Word sesuai pilihan ukuran kertas pengguna. */
+function getPageProperties() {
+  const { width, height } = paperSizeToTwips(getPaperSize());
+  return {
+    page: {
+      size: { width, height },
+      margin: {
+        top: 1440, // 1 inch
+        right: 1440,
+        bottom: 1440,
+        left: 1440,
+      },
+    },
+  };
+}
 
 export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Promise<void> {
   const sections: any[] = [];
@@ -334,16 +351,7 @@ export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Prom
   const wordDoc = new Document({
     sections: [
       {
-        properties: {
-          page: {
-            margin: {
-              top: 1440, // 1 inch
-              right: 1440,
-              bottom: 1440,
-              left: 1440,
-            },
-          },
-        },
+        properties: getPageProperties(),
         children: sections,
       },
     ],
@@ -481,16 +489,7 @@ export async function generateDocxBlob(doc: PuskesDoc, profile: FaskesProfile): 
   const wordDoc = new Document({
     sections: [
       {
-        properties: {
-          page: {
-            margin: {
-              top: 1440,
-              right: 1440,
-              bottom: 1440,
-              left: 1440,
-            },
-          },
-        },
+        properties: getPageProperties(),
         children: sections,
       },
     ],

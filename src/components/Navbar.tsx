@@ -8,7 +8,8 @@ import {
   Building2,
   Cloud,
   Mail,
-  UserCheck
+  UserCheck,
+  HelpCircle
 } from 'lucide-react';
 import { UserAccount } from '../utils/storage';
 
@@ -19,6 +20,7 @@ interface NavbarProps {
   setActiveTab: (tab: MainNavTab) => void;
   onOpenCloudModal: () => void;
   onOpenLoginModal: () => void;
+  onOpenHelpModal: () => void;
   userAccount: UserAccount;
 }
 
@@ -27,6 +29,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenCloudModal,
   onOpenLoginModal,
+  onOpenHelpModal,
   userAccount,
 }) => {
   return (
@@ -150,6 +153,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Login Email</span>
             </button>
           )}
+
+          {/* Help Button */}
+          <button
+            onClick={onOpenHelpModal}
+            title="Bantuan & panduan penggunaan aplikasi"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-all hover:border-purple-300 cursor-pointer"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-purple-600" />
+            <span className="hidden sm:inline">Bantuan</span>
+          </button>
 
           {/* Backup & Google Drive Button */}
           <button

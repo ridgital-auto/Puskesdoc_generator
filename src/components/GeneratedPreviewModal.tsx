@@ -14,6 +14,7 @@ import {
 import { PuskesDoc, FaskesProfile } from '../types';
 import { exportToDocx, generateDocxBase64 } from '../utils/docxExport';
 import { saveMediaItem } from '../utils/storage';
+import { PaperSizeSelector } from './PaperSizeSelector';
 
 interface GeneratedPreviewModalProps {
   isOpen: boolean;
@@ -127,6 +128,7 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
               <Download className="w-4 h-4 text-purple-600" />
               <span>Unduh .DOCX</span>
             </button>
+            <PaperSizeSelector compact onNotify={onNotify} />
 
             <button
               onClick={handleApplyAndClose}

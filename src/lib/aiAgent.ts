@@ -57,7 +57,7 @@ Anda membuat dan merapikan dokumen akreditasi Puskesmas sesuai kaidah baku:
 
 Gunakan gaya bahasa naskah dinas kedinasan resmi Indonesia yang lugas, presisi, dan sesuai standar Puskesmas.`;
 
-function getGeminiClient(): GoogleGenAI {
+export function getGeminiClient(): GoogleGenAI {
   const key = (getGeminiApiKey() || '').trim();
   if (!key) {
     throw new Error(AI_KEY_HELP);

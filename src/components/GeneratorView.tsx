@@ -63,6 +63,7 @@ import {
 import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
 import { aiGenerateDocument, aiExecuteBracketPrompt } from '../lib/aiAgent';
+import { PaperSizeSelector } from './PaperSizeSelector';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
 
@@ -128,7 +129,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const [marginPreset, setMarginPreset] = useState<'2,2,2,2' | '4,3,3,3' | 'custom'>('2,2,2,2');
   const [customMargin, setCustomMargin] = useState({ top: 2, left: 2, right: 2, bottom: 2 });
 
-  // User Account & AI Agent Selection State (Default: Google Gemini 2.5 Flash tied to email)
+  // AI Agent Selection State (Default: Google Gemini 3.8 Flash via kunci API pribadi)
   const [userAccount, setUserAccount] = useState<UserAccount>(getStoredUserAccount());
   const [selectedAgent, setSelectedAgent] = useState<'gemini' | 'custom'>('gemini');
   const [customAgentState, setCustomAgentState] = useState<CustomAgentConfig>(getStoredAgentConfig());
@@ -581,7 +582,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     setProgressPercent(10);
     setProgressStepText(
       selectedAgent === 'gemini'
-        ? `Menghubungkan ke Google Gemini (${userAccount.email})...`
+        ? `Menghubungkan ke Google Gemini 3.8 Flash...`
         : `Menghubungkan ke Custom AI (${customAgentState.model || 'OpenAI'})...`
     );
 
@@ -985,6 +986,9 @@ Catatan: ${item.notes || '-'}
             <Download className="w-3.5 h-3.5 text-purple-600" />
             <span className="hidden sm:inline">.DOCX</span>
           </button>
+          <div title="Ukuran kertas untuk ekspor Word (.docx)">
+            <PaperSizeSelector compact onNotify={triggerNotice} />
+          </div>
 
           {/* Tombol Cetak (Fixed & Isolated) */}
           <button
@@ -1502,7 +1506,7 @@ Catatan: ${item.notes || '-'}
                   <span>Pilihan AI Agent Generator</span>
                 </label>
                 <span className="text-[10px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                  {selectedAgent === 'gemini' ? 'Google Gemini Bawaan' : 'Custom AI'}
+                  {selectedAgent === 'gemini' ? 'Gemini 3.8 Flash' : 'Custom AI'}
                 </span>
               </div>
 
@@ -1512,7 +1516,7 @@ Catatan: ${item.notes || '-'}
                 className="w-full px-2.5 py-1.5 text-xs font-semibold border border-purple-300 rounded-lg bg-white text-purple-950 focus:ring-2 focus:ring-purple-500/20 cursor-pointer"
               >
                 <option value="gemini">
-                  Google Gemini 2.5 Flash (Tertaut: {userAccount.email || 'Akun Google Faskes'}) [Default]
+                  Google Gemini 3.8 Flash (API Key Pribadi) [Default]
                 </option>
                 <option value="custom">
                   Custom AI Agent (OpenAI / DeepSeek / Compatible)
@@ -1523,7 +1527,7 @@ Catatan: ${item.notes || '-'}
                 <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span className="leading-tight">
-                    Agent aktif via <strong>Google Gemini 2.5 Flash</strong> (akun <strong>{userAccount.email}</strong>). Tanpa perlu konfigurasi API tambahan.
+                    Agent aktif via <strong>Google Gemini 3.8 Flash</strong> memakai <strong>API key pribadimu</strong> (diatur di Backup & GDrive → tab AI Agent).
                   </span>
                 </div>
               ) : (
@@ -1590,7 +1594,7 @@ Catatan: ${item.notes || '-'}
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-fuchsia-300 animate-spin" />
                       <span className="text-xs font-bold tracking-wide">
-                        Membuat Dokumen via {selectedAgent === 'gemini' ? 'Gemini 2.5 Flash' : 'Custom AI'}...
+                        Membuat Dokumen via {selectedAgent === 'gemini' ? 'Gemini 3.8 Flash' : 'Custom AI'}...
                       </span>
                     </div>
                     <span className="text-xs font-mono font-bold text-fuchsia-300">

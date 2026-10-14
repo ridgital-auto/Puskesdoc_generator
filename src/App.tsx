@@ -8,6 +8,9 @@ import { MediaLibraryView } from './components/MediaLibraryView';
 import { DatabasePuskesmasView } from './components/DatabasePuskesmasView';
 import { PromptModal } from './components/PromptModal';
 import { CloudIntegrationModal } from './components/CloudIntegrationModal';
+import { HelpModal } from './components/HelpModal';
+import { addDataChangeListener } from './utils/storage';
+import { scheduleAutoBackup } from './services/driveSync';
 import { LoginModal } from './components/LoginModal';
 import { 
   getStoredProfile, 
@@ -96,6 +99,12 @@ export default function App() {
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [promptModalText, setPromptModalText] = useState('');
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+
+  // Daftarkan sinkronisasi otomatis ke Google Drive saat ada perubahan data
+  useEffect(() => {
+    addDataChangeListener(scheduleAutoBackup);
+  }, []);
 
   const handleOpenPromptModal = (text: string) => {
     setPromptModalText(text);
@@ -168,6 +177,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
+        onOpenHelpModal={() => setIsHelpModalOpen(true)}
         userAccount={userAccount}
       />
 
@@ -237,6 +247,12 @@ export default function App() {
         isOpen={isPromptModalOpen}
         onClose={() => setIsPromptModalOpen(false)}
         promptText={promptModalText}
+      />
+
+      {/* Help Modal */}
+      <HelpModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
       />
 
       {/* Google Drive, Backup, & Custom AI Modal */}
