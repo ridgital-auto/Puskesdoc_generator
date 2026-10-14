@@ -46,10 +46,22 @@ export interface VariableItem {
   category: 'faskes' | 'nakes' | 'dokumen' | 'custom';
 }
 
+export interface SectionImage {
+  id: string;
+  dataUrl: string;
+  /** lebar tampilan dalam px */
+  width: number;
+  /** bila melayang: posisi absolut relatif terhadap kertas */
+  floating?: boolean;
+  left?: number;
+  top?: number;
+}
+
 export interface DocumentSection {
   id: string;
   title: string;
   content: string;
+  images?: SectionImage[];
 }
 
 export interface SopMetadata {

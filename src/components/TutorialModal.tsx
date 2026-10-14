@@ -16,7 +16,8 @@ import {
   CheckCircle2, 
   Lightbulb, 
   Layers,
-  MessageCircleQuestion
+  MessageCircleQuestion,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface TutorialModalProps {
@@ -160,6 +161,27 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
         tips: [
           'Penyusunan dokumen akreditasi berbasis data riil Puskesmas (evidence-based) menjamin nilai kelulusan Paripurna saat survei akreditasi Kemenkes.',
         ],
+      },
+    },
+    {
+      title: '5b. Gambar di Lembar Kerja Generator',
+      category: 'Lembar Kerja',
+      icon: ImageIcon,
+      summary: 'Setiap bagian dokumen bisa disisipi gambar: klik untuk resize langsung atau tarik untuk pindah.',
+      content: {
+        steps: [
+          'Di lembar kerja, setiap bagian memiliki tombol "Gambar" di samping tombol variabel {{ }} — klik untuk memilih file gambar dari perangkat.',
+          'Gambar muncul di bawah teks bagian tersebut. Klik gambar untuk memilih: muncul bingkai ungu dengan 4 titik sudut.',
+          'Tarik titik sudut untuk resize langsung (proporsional, seperti Word).',
+          'Tarik badan gambar untuk membuatnya melayang — bebas ditaruh di mana saja di atas kertas.',
+          'Klik tombol × pada gambar atau pada bingkai ungu untuk menghapus gambar.',
+          'Gambar ikut tersimpan bersama dokumen, tampil di pratinjau hasil, dan tercetak saat Cetak/PDF.',
+        ],
+        tips: [
+          'Gambar berformat data internal sehingga ikut tersimpan otomatis — tidak perlu upload ulang.',
+          'Untuk dokumen dari template Word (.docx), teksnya sudah bisa diedit langsung di lembar kerja.',
+        ],
+        examples: [],
       },
     },
     {

@@ -170,6 +170,19 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
                   <div className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed pl-2 font-sans">
                     {sec.content}
                   </div>
+                  {sec.images && sec.images.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pl-2 pt-1">
+                      {sec.images.map((gimg) => (
+                        <img
+                          key={gimg.id}
+                          src={gimg.dataUrl}
+                          alt=""
+                          style={{ width: `${gimg.width || 280}px`, maxWidth: '100%', height: 'auto' }}
+                          className="rounded border border-slate-200"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
