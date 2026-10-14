@@ -29,7 +29,8 @@ import {
   Square,
   Bot,
   CheckCircle2,
-  HelpCircle
+  HelpCircle,
+  ZoomIn
 } from 'lucide-react';
 import { extractTextFromDocx, extractDocxAsHtml } from '../utils/docxReader';
 import { 
@@ -70,6 +71,7 @@ import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
 import { aiGenerateDocument, aiExecuteBracketPrompt } from '../lib/aiAgent';
 import { AGENT_PRESETS } from '../lib/agentPresets';
+import { setupTableColumnResize } from '../utils/tableColumnResize';
 import { PaperSizeSelector } from './PaperSizeSelector';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
@@ -148,6 +150,14 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const genImgBoxRef = useRef<HTMLDivElement | null>(null);
   const genImgInputRef = useRef<HTMLInputElement | null>(null);
   const genImgTargetSection = useRef<number>(0);
+  // Kolom tabel (dokumen Word) bisa ditarik di lembar kerja
+  const genDocxRef = useRef<HTMLDivElement | null>(null);
+  // Zoom kertas generator (auto-fit seperti MS Word)
+  const genZoomAreaRef = useRef<HTMLDivElement | null>(null);
+  const genZoomScaleRef = useRef<number>(1);
+  const [genZoomSel, setGenZoomSel] = useState<'fit' | number>('fit');
+  const [genAreaW, setGenAreaW] = useState(0);
+  const [genPaperH, setGenPaperH] = useState(1123);
   const [genSelectedImg, setGenSelectedImg] = useState<{ sectionIdx: number; imageId: string } | null>(null);
   const [agentForm, setAgentForm] = useState({ id: '', name: '', endpoint: '', model: '', apiKey: '', noKey: false });
   const [agentTestStatus, setAgentTestStatus] = useState<string | null>(null);
@@ -579,13 +589,14 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     const wrap = genPaperRef.current;
     const box = genImgBoxRef.current;
     if (!img || !wrap || !box) return;
+    const sc = genZoomScaleRef.current || 1;
     const wr = wrap.getBoundingClientRect();
     const r = img.getBoundingClientRect();
     box.style.display = 'block';
-    box.style.left = `${r.left - wr.left}px`;
-    box.style.top = `${r.top - wr.top}px`;
-    box.style.width = `${r.width}px`;
-    box.style.height = `${r.height}px`;
+    box.style.left = `${(r.left - wr.left) / sc}px`;
+    box.style.top = `${(r.top - wr.top) / sc}px`;
+    box.style.width = `${r.width / sc}px`;
+    box.style.height = `${r.height / sc}px`;
   };
 
   /** Tulis perubahan gambar kembali ke data section */
@@ -660,12 +671,13 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     let moved = false;
     const ensureFloat = () => {
       const paper = genPaperRef.current!;
+      const sc = genZoomScaleRef.current || 1;
       const pr = paper.getBoundingClientRect();
       const r = target.getBoundingClientRect();
       target.dataset.floating = '1';
       target.style.position = 'absolute';
-      target.style.left = `${Math.max(0, r.left - pr.left)}px`;
-      target.style.top = `${Math.max(0, r.top - pr.top)}px`;
+      target.style.left = `${Math.max(0, (r.left - pr.left) / sc)}px`;
+      target.style.top = `${Math.max(0, (r.top - pr.top) / sc)}px`;
       target.style.margin = '0';
       target.style.zIndex = '20';
       target.style.cursor = 'move';
@@ -674,8 +686,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
       origTop = parseFloat(target.style.top || '0');
     };
     const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
+      const sc = genZoomScaleRef.current || 1;
+      const dx = (ev.clientX - startX) / sc;
+      const dy = (ev.clientY - startY) / sc;
       if (!floating && Math.hypot(dx, dy) < 5) return;
       if (!floating) {
         ensureFloat();
@@ -684,8 +697,8 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         triggerNotice('Gambar jadi melayang — bebas ditarik ke mana saja di kertas.');
       }
       moved = true;
-      target.style.left = `${Math.max(0, origLeft + ev.clientX - startX)}px`;
-      target.style.top = `${Math.max(0, origTop + ev.clientY - startY)}px`;
+      target.style.left = `${Math.max(0, origLeft + (ev.clientX - startX) / sc)}px`;
+      target.style.top = `${Math.max(0, origTop + (ev.clientY - startY) / sc)}px`;
       positionGenImgOverlay();
     };
     const onUp = () => {
@@ -719,7 +732,8 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     const startLeft = parseFloat(img.style.left || '0');
     const startTop = parseFloat(img.style.top || '0');
     const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX;
+      const sc = genZoomScaleRef.current || 1;
+      const dx = (ev.clientX - startX) / sc;
       let w = startW;
       let l = startLeft;
       let t = startTop;
@@ -769,6 +783,41 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
       window.removeEventListener('resize', onScrollResize);
     };
   }, [genSelectedImg]);
+
+  // Kolom tabel pada dokumen Word di lembar kerja bisa ditarik (resize)
+  useEffect(() => {
+    if (genDocxRef.current && activeDoc.originalDocxHtml) {
+      setupTableColumnResize(genDocxRef.current);
+    }
+  }, [activeDoc.originalDocxHtml, activeTabId]);
+
+  // Ukur lebar area kertas untuk zoom "Pas Lebar" (auto-fit)
+  useEffect(() => {
+    const el = genZoomAreaRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setGenAreaW(el.clientWidth));
+    ro.observe(el);
+    setGenAreaW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  // Ukur tinggi kertas (untuk pembungkus saat di-zoom)
+  useEffect(() => {
+    if (genPaperRef.current) {
+      const h = genPaperRef.current.offsetHeight;
+      if (h > 0) setGenPaperH(h);
+    }
+  });
+
+  // Skala zoom kertas: 'fit' = pas lebar area (auto-fit ala MS Word)
+  const genPaperWPx = parseInt(paperDimensions.maxWidth) || 794;
+  const genZoomScale =
+    genZoomSel === 'fit'
+      ? Math.min(2, Math.max(0.25, (genAreaW || genPaperWPx) / genPaperWPx))
+      : genZoomSel;
+  useEffect(() => {
+    genZoomScaleRef.current = genZoomScale;
+  }, [genZoomScale]);
 
   // Helper to update active tab state & sync with setCurrentDoc
   const updateActiveTab = (updates: Partial<GeneratorTabItem>, updatedDoc?: PuskesDoc) => {
@@ -2294,7 +2343,36 @@ Catatan: ${item.notes || '-'}
               e.target.value = '';
             }}
           />
-          <div className="bg-slate-200/80 p-4 sm:p-6 rounded-2xl border border-slate-300 shadow-inner flex flex-col items-center gap-6 overflow-x-auto">
+          <div
+            ref={genZoomAreaRef}
+            className="bg-slate-200/80 p-4 sm:p-6 rounded-2xl border border-slate-300 shadow-inner w-full overflow-x-auto"
+          >
+            {/* Toolbar Zoom Kertas — auto-fit ala MS Word (tidak ikut dicetak) */}
+            <div className="no-print flex items-center justify-center gap-2 text-xs text-slate-600 mb-3">
+              <ZoomIn className="w-3.5 h-3.5 text-slate-500" />
+              <span className="font-semibold">Zoom kertas:</span>
+              <select
+                value={genZoomSel === 'fit' ? 'fit' : String(genZoomSel)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setGenZoomSel(v === 'fit' ? 'fit' : parseFloat(v));
+                }}
+                className="px-2 py-1 text-xs font-semibold border border-slate-300 rounded-lg bg-white text-slate-800 cursor-pointer"
+                title="Atur tampilan kertas seperti zoom di MS Word"
+              >
+                <option value="fit">Pas Lebar (Auto-fit)</option>
+                <option value="0.5">50%</option>
+                <option value="0.75">75%</option>
+                <option value="1">100% (Aktual)</option>
+                <option value="1.25">125%</option>
+                <option value="1.5">150%</option>
+              </select>
+              <span className="font-mono text-slate-500">{Math.round(genZoomScale * 100)}%</span>
+            </div>
+            <div
+              className="gen-zoom-sizer relative"
+              style={{ width: genPaperWPx * genZoomScale, height: genPaperH * genZoomScale, margin: '0 auto' }}
+            >
             <div
               ref={genPaperRef}
               style={{
@@ -2307,8 +2385,10 @@ Catatan: ${item.notes || '-'}
                 paddingBottom: `${activeMargins.bottom}cm`,
                 paddingLeft: `${activeMargins.left}cm`,
                 paddingRight: `${activeMargins.right}cm`,
+                transform: `scale(${genZoomScale})`,
+                transformOrigin: 'top left',
               }}
-              className="a4-page bg-white text-slate-900 shadow-xl rounded-sm border border-slate-300 space-y-6 leading-relaxed select-text flex flex-col justify-between relative"
+              className="a4-page gen-zoom-paper bg-white text-slate-900 shadow-xl rounded-sm border border-slate-300 space-y-6 leading-relaxed select-text flex flex-col justify-between relative"
             >
               {/* Overlay seleksi gambar: bingkai + handle resize langsung */}
               {genSelectedImg && (
@@ -2372,6 +2452,7 @@ Catatan: ${item.notes || '-'}
                       </button>
                     </div>
                     <div
+                      ref={genDocxRef}
                       contentEditable={true}
                       suppressContentEditableWarning={true}
                       onInput={(e) => {
@@ -2379,7 +2460,7 @@ Catatan: ${item.notes || '-'}
                       }}
                       dangerouslySetInnerHTML={{ __html: activeDoc.originalDocxHtml }}
                       className="docx-document-content min-h-[750px] p-2 leading-relaxed select-text focus:outline-none focus:ring-1 focus:ring-purple-300 rounded cursor-text"
-                      title="Klik di sini untuk langsung mengedit naskah dokumen sesuai aslinya"
+                      title="Klik di sini untuk langsung mengedit naskah dokumen sesuai aslinya. Garis batas kolom tabel bisa ditarik untuk mengubah lebar kolom."
                     />
                   </div>
                 ) : (
@@ -2685,6 +2766,7 @@ Catatan: ${item.notes || '-'}
                   Halaman {safeCurrentPage} dari {totalTargetPages}
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>

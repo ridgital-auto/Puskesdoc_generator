@@ -185,6 +185,25 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
       },
     },
     {
+      title: '5c. Tarik Kolom Tabel & Zoom Kertas (ala MS Word)',
+      category: 'Lembar Kerja',
+      icon: Sliders,
+      summary: 'Lebar kolom tabel bisa ditarik langsung; kertas bisa di-zoom Pas Lebar / persentase.',
+      content: {
+        steps: [
+          'TABEL: pada dokumen Word (editor template & lembar kerja), arahkan kursor ke garis batas kanan sebuah kolom — kursor berubah jadi panah dua arah.',
+          'Tekan dan tarik garis batas ke kiri/kanan untuk mengubah lebar kolom. Perubahan tersimpan otomatis bersama dokumen.',
+          'ZOOM: di atas kertas lembar kerja ada pilihan "Zoom kertas" — bawaan "Pas Lebar (Auto-fit)" agar kertas selalu pas di layar.',
+          'Bisa juga pilih 50%, 75%, 100% (Aktual), 125%, atau 150% seperti menu zoom di MS Word. Persentase tampil di sebelahnya.',
+          'Zoom hanya untuk tampilan di layar — hasil cetak/PDF selalu 100% ukuran sebenarnya.',
+        ],
+        tips: [
+          'Di layar kecil (HP/tablet), biarkan "Pas Lebar" agar tidak perlu geser ke samping.',
+        ],
+        examples: [],
+      },
+    },
+    {
       id: 'paper_margin',
       title: '6. Pengaturan Ukuran Kertas & Margin Lembar Kerja',
       category: 'Format & Tata Letak',

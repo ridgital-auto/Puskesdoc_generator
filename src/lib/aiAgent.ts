@@ -65,6 +65,35 @@ export function getGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey: key });
 }
 
+/** Ambil teks bacaan dari balasan mirip-JSON yang gagal di-parse (mis. terpotong).
+ *  Tujuannya: pengguna TIDAK PERNAH melihat JSON mentah — selalu jadi teks dokumen. */
+function salvageReadableText(text: string): string {
+  const cleaned = cleanJsonFences(text).trim();
+  // Kumpulkan string literal yang panjang (isi naskah), abaikan kunci JSON umum.
+  const skip = new Set([
+    'title', 'docNumber', 'docType', 'klaster', 'sections', 'content', 'summary',
+    'rawFormattedText', 'name', 'description', 'notes', 'detectedVariables',
+    'variableKey', 'originalSample', 'staticClauses', 'templateWithPlaceholders', 'suggestions',
+  ]);
+  const parts: string[] = [];
+  const re = /"((?:[^"\\]|\\.)*)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cleaned)) !== null) {
+    const s = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\t/g, ' ').replace(/\\\\/g, '\\');
+    if (s.length < 25 || skip.has(s)) continue;
+    parts.push(s);
+  }
+  if (parts.length > 0) return parts.join('\n\n');
+  // Fallback terakhir: buang sisa sintaks JSON.
+  return cleaned.replace(/[{}"\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Validasi bentuk hasil parse: harus punya sections berisi konten teks. */
+function isValidDocData(parsed: any): boolean {
+  return !!(parsed && Array.isArray(parsed.sections) && parsed.sections.length > 0 &&
+    parsed.sections.every((s: any) => typeof s?.content === 'string'));
+}
+
 function cleanJsonFences(text: string): string {
   return text.replace(/```json/g, '').replace(/```/g, '').trim();
 }
@@ -241,13 +270,15 @@ export async function aiGenerateDocument(p: GenerateDocumentParams): Promise<any
     if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
       const reply = await callCustomAgentText(customCfg, promptText, 0.7, p.signal);
       const parsed = tryParseJson(reply);
-      if (parsed) return { success: true, data: parsed, provider: 'custom' };
+      if (isValidDocData(parsed)) return { success: true, data: parsed, provider: 'custom' };
+      // Jangan pernah tampilkan JSON mentah — selamatkan jadi teks bacaan.
+      const readable = salvageReadableText(reply);
       return {
         success: true,
         data: {
           title: docTitle, docType: p.docType, klaster: klasterLabel,
-          sections: [{ title: 'Isi Dokumen', content: reply }],
-          rawFormattedText: reply,
+          sections: [{ title: 'Isi Dokumen', content: readable }],
+          rawFormattedText: readable,
         },
         provider: 'custom',
       };
@@ -264,13 +295,14 @@ export async function aiGenerateDocument(p: GenerateDocumentParams): Promise<any
     });
     const text = geminiResponse.text || '{}';
     const parsed = tryParseJson(text);
-    if (parsed) return { success: true, data: parsed, provider: 'gemini' };
+    if (isValidDocData(parsed)) return { success: true, data: parsed, provider: 'gemini' };
+    const readable = salvageReadableText(text);
     return {
       success: true,
       data: {
         title: docTitle, docType: p.docType, klaster: klasterLabel,
-        sections: [{ title: 'Hasil Dokumen', content: text }],
-        rawFormattedText: text,
+        sections: [{ title: 'Hasil Dokumen', content: readable }],
+        rawFormattedText: readable,
       },
       provider: 'gemini',
     };

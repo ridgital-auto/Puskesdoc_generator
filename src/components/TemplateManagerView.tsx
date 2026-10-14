@@ -56,6 +56,7 @@ import {
   getStoredVariables
 } from '../utils/storage';
 import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
+import { setupTableColumnResize } from '../utils/tableColumnResize';
 import { aiExecuteBracketPrompt } from '../lib/aiAgent';
 
 interface TemplateManagerViewProps {
@@ -208,6 +209,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       if (!el.innerHTML.trim() && tpl.originalDocxHtml) {
         el.innerHTML = tpl.originalDocxHtml;
       }
+      setupTableColumnResize(el);
       return;
     }
     docxRenderKey.current = key;
@@ -216,15 +218,21 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       forceBase64Render.current = false;
       const base64 = tpl.originalDocxBase64;
       const fallbackHtml = tpl.originalDocxHtml;
-      renderDocxToContainer(base64, el).catch(() => {
-        if (fallbackHtml) el.innerHTML = fallbackHtml;
-      });
+      renderDocxToContainer(base64, el)
+        .then(() => setupTableColumnResize(el))
+        .catch(() => {
+          if (fallbackHtml) el.innerHTML = fallbackHtml;
+          setupTableColumnResize(el);
+        });
     } else if (tpl.originalDocxHtml) {
       // Buka template tersimpan: pakai HTML simpanan (termasuk gambar yang disisipkan & editan)
       el.innerHTML = tpl.originalDocxHtml;
+      setupTableColumnResize(el);
     } else if (tpl.originalDocxBase64) {
       const base64 = tpl.originalDocxBase64;
-      renderDocxToContainer(base64, el).catch(() => {});
+      renderDocxToContainer(base64, el)
+        .then(() => setupTableColumnResize(el))
+        .catch(() => {});
     }
   }, [isEditorOpen, editorViewMode, docxDisplayMode, docxVersion, editingTemplate]);
 
