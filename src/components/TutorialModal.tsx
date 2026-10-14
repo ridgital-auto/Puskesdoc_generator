@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AskAiAboutApp } from './AskAiAboutApp';
 import { 
   X, 
   BookOpen, 
@@ -14,7 +15,8 @@ import {
   Sliders, 
   CheckCircle2, 
   Lightbulb, 
-  Layers
+  Layers,
+  MessageCircleQuestion
 } from 'lucide-react';
 
 interface TutorialModalProps {
@@ -38,6 +40,7 @@ interface TutorialTopic {
 export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose }) => {
   const [expandedTopicId, setExpandedTopicId] = useState<string>('agent_ai');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAskOpen, setIsAskOpen] = useState(false);
 
   if (!isOpen) return null;
 
@@ -300,6 +303,30 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
 
         {/* Accordion Topics List */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 bg-slate-100/70">
+          {/* Panel Tanya AI */}
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl overflow-hidden shadow-md">
+            <button
+              type="button"
+              onClick={() => setIsAskOpen(!isAskOpen)}
+              className="w-full text-left p-4 sm:p-5 flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 text-white flex items-center justify-center shrink-0">
+                  <MessageCircleQuestion className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Tanya AI seputar aplikasi ini</p>
+                  <p className="text-[11px] text-purple-100">AI hanya menjawab pertanyaan tentang penggunaan Puskesdoc Generator</p>
+                </div>
+              </div>
+              {isAskOpen ? <ChevronDown className="w-5 h-5 text-white shrink-0" /> : <ChevronRight className="w-5 h-5 text-white shrink-0" />}
+            </button>
+            {isAskOpen && (
+              <div className="bg-white mx-2 mb-2 rounded-xl p-4">
+                <AskAiAboutApp />
+              </div>
+            )}
+          </div>
           {filteredTopics.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs">
               Tidak ditemukan tutorial yang sesuai dengan kata kunci "{searchQuery}".
