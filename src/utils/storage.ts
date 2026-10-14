@@ -384,6 +384,7 @@ export function exportBackupJSON(): string {
     customTypes: getStoredCustomTypes(),
     agentConfig: getStoredAgentConfig(),
     geminiApiKey: getGeminiApiKey(),
+    googleClientId: getGoogleClientId(),
     paperSize: getPaperSize(),
     media: getStoredMedia(),
     database: getStoredDatabase(),
@@ -405,6 +406,7 @@ export function importBackupJSON(jsonStr: string): boolean {
     if (data.customTypes) saveCustomTypes(data.customTypes);
     if (data.agentConfig) saveAgentConfig(data.agentConfig);
     if (data.geminiApiKey) saveGeminiApiKey(data.geminiApiKey);
+    if (data.googleClientId) saveGoogleClientId(data.googleClientId);
     if (data.paperSize) savePaperSize(data.paperSize);
     if (data.media) saveAllMedia(data.media);
     if (data.database && Array.isArray(data.database)) saveAllDatabase(data.database);
