@@ -12,6 +12,7 @@ export function notifyDataChanged(): void {
   });
 }
 import { DEFAULT_FASKES_PROFILE, INITIAL_VARIABLES, DEFAULT_CUSTOM_DOC_TYPES, DEFAULT_DOCUMENT_TEMPLATES, DEFAULT_LOGO_PEMDA, DEFAULT_LOGO_PUSKESMAS, INITIAL_DATABASE_ITEMS } from './constants';
+import { htmlToPlainText } from './templateFill';
 
 const PROFILE_KEY = 'puskesdoc_faskes_profile';
 const VARIABLES_KEY = 'puskesdoc_variables';
@@ -109,7 +110,24 @@ export function getStoredDocumentTemplates(): DocumentTemplate[] {
     const raw = localStorage.getItem(DOCUMENT_TEMPLATES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Perbaiki template lama yang isinya kode CSS (bug ekstraksi docx-preview
+        // yang ikut membaca <style> sebagai teks). Ambil ulang teks bersih dari HTML simpanan.
+        let repaired = false;
+        for (const t of parsed as DocumentTemplate[]) {
+          if (!t.originalDocxHtml) continue;
+          for (const s of t.sections || []) {
+            if (s.content && /\.docx-[a-z0-9-]+\s*\{/i.test(s.content)) {
+              s.content = htmlToPlainText(t.originalDocxHtml).slice(0, 6000);
+              repaired = true;
+            }
+          }
+        }
+        if (repaired) {
+          try { localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(parsed)); } catch { /* abaikan */ }
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed reading document templates from localStorage', e);

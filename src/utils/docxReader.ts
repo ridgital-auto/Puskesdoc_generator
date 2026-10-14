@@ -123,9 +123,13 @@ export async function extractDocxAsHtml(file: File): Promise<DocxExtractionResul
 
     const renderedHtml = offscreen.innerHTML;
     if (renderedHtml && renderedHtml.trim().length > 30) {
+      // docx-preview menyisipkan <style> berisi kode CSS (.docx-*) di dalam container.
+      // Singkirkan dulu agar CSS tidak ikut terbaca sebagai "teks dokumen".
+      const clean = offscreen.cloneNode(true) as HTMLElement;
+      clean.querySelectorAll('style, script').forEach((el) => el.remove());
       return {
         html: renderedHtml,
-        rawText: offscreen.textContent || '',
+        rawText: clean.textContent || '',
         base64,
         embeddedImages,
       };
