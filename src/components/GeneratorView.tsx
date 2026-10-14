@@ -1871,7 +1871,7 @@ Catatan: ${item.notes || '-'}
                   type="button"
                   onClick={handleOpenAddAgent}
                   className="shrink-0 px-2.5 py-1.5 text-xs font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg transition-colors cursor-pointer"
-                  title="Tambah AI agent baru (mis. Pollinations, OpenRouter, Groq, Muse)"
+                  title="Tambah AI agent baru (mis. OpenRouter, Groq, Muse)"
                 >
                   ＋ Tambah
                 </button>
@@ -1927,7 +1927,7 @@ Catatan: ${item.notes || '-'}
                       type="text"
                       value={agentForm.name}
                       onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })}
-                      placeholder="mis. Muse / Pollinations"
+                      placeholder="mis. Muse / OpenRouter"
                       className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md"
                     />
                   </div>

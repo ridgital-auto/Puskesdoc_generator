@@ -12,15 +12,6 @@ export interface AgentPreset {
 
 export const AGENT_PRESETS: AgentPreset[] = [
   {
-    id: 'pollinations',
-    name: 'Pollinations',
-    endpoint: 'https://text.pollinations.ai/openai',
-    model: 'openai',
-    noKey: true,
-    badge: 'Gratis • tanpa daftar',
-    keyHint: 'Tidak perlu API key — langsung bisa dipakai setelah disimpan.',
-  },
-  {
     id: 'openrouter',
     name: 'OpenRouter',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
