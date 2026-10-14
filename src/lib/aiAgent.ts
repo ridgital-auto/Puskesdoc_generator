@@ -191,6 +191,8 @@ export interface GenerateDocumentParams {
   targetPages?: string | number;
   selectedDatabaseItems?: any[];
   signal?: AbortSignal;
+  /** Panduan struktur template milik pengguna (daftar judul bagian / ringkasan isi Word) — WAJIB diikuti AI. */
+  templateStructure?: string;
 }
 
 function buildGeneratePrompt(p: GenerateDocumentParams): { promptText: string; docTitle: string; klasterLabel: string; pageCount: number } {
@@ -233,7 +235,15 @@ ${bracketPromptList}
 
 - Variabel Data Faskes:
 ${JSON.stringify(p.variables || {}, null, 2)}
-
+${p.templateStructure ? `
+STRUKTUR TEMPLATE PENGGUNA — WAJIB DIIKUTI (PALING PENTING):
+Pengguna sudah punya template dokumen sendiri. Kamu WAJIB menghasilkan bagian-bagian
+("sections") yang MENGIKUTI PERSIS struktur template di bawah: judul bagian SAMA PERSIS,
+urutan SAMA, jumlah bagian SAMA. Jangan menambah, mengurangi, menggabungkan, atau
+mengubah judul bagian apa pun. Isi setiap bagian dengan naskah BARU yang relevan dengan
+konteks pengguna di atas (bukan menyalin mentah isi template).
+${p.templateStructure}
+` : ''}
 Format respon yang diharapkan:
 PENTING: Jawab HANYA dengan JSON valid — tanpa kalimat pembuka, tanpa penjelasan, tanpa teks penutup. Langsung mulai dari karakter { dan akhiri di }.
 Kembalikan respon JSON murni (JSON parsable) dengan struktur:

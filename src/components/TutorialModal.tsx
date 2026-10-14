@@ -113,6 +113,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
           'Klik tombol "Generate Otomatis via AI". Progress bar interaktif akan menampilkan tahapan proses penyusunan naskah.',
           'Jika Anda ingin membatalkan proses yang sedang berjalan, klik tombol merah "Stop Generate".',
           'Setelah selesai, jendela Popup Preview akan otomatis terbuka untuk verifikasi.',
+          'PENTING: hasil generate selalu MENGIKUTI template yang sedang dipilih — judul & urutan bagian sama persis dengan template (termasuk template dari upload file Word asli).',
         ],
         tips: [
           'Jika Anda menutup jendela pratinjau dan ingin melihatnya kembali, gunakan tombol "Lihat Hasil" di panel lembar kerja.',

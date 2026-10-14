@@ -996,6 +996,22 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     try {
       const activeCustomAgent = selectedAgentId !== 'gemini' ? agentList.find((a) => a.id === selectedAgentId && a.enabled && (a.apiKey || a.noKey)) : undefined;
 
+      // Susun panduan struktur template agar hasil generate MENGIKUTI template pengguna
+      let templateStructure = '';
+      if (activeDoc.originalDocxHtml) {
+        // Template dari upload file Word asli: jadikan isi/teksnya sebagai panduan struktur
+        const tmpEl = document.createElement('div');
+        tmpEl.innerHTML = activeDoc.originalDocxHtml;
+        const tplText = (tmpEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
+        if (tplText) {
+          templateStructure = `Template ini berasal dari file Word (.docx) yang di-upload pengguna. Berikut ringkasan isi & susunan bagiannya:\n"""${tplText}"""\nTugas: hasilkan dokumen dengan bagian-bagian yang mengikuti judul & urutan bagian pada template di atas.`;
+        }
+      } else if (activeDoc.sections && activeDoc.sections.length > 0) {
+        // Template pustaka / struktur standar: ikuti judul & urutan bagian persis
+        templateStructure = `Daftar bagian template (hasilkan TEPAT ${activeDoc.sections.length} bagian, judul SAMA PERSIS, urutan SAMA):\n` +
+          activeDoc.sections.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
+      }
+
       const json = await aiGenerateDocument({
         docType: activeDoc.docType === 'CUSTOM' ? (activeDoc.customTypeName || 'Custom') : activeDoc.docType,
         klaster: activeKlasterInfo.name,
@@ -1010,6 +1026,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         }, {}),
         customAgentConfig: activeCustomAgent,
         signal: abortControllerRef.current.signal,
+        templateStructure: templateStructure || undefined,
       });
 
       if (json.success && json.data) {
