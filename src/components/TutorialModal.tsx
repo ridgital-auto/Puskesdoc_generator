@@ -78,9 +78,12 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
           'API key gratis bisa dibuat di https://aistudio.google.com/apikey. Key hanya tersimpan di browser ini.',
           'Pada Panel Generator di atas tombol Generate, perhatikan bagian "Pilihan AI Agent".',
           'Pilihan Default adalah "Google Gemini 3.8 Flash (API Key Pribadi)" yang memakai key milikmu sendiri.',
-          'Jika Puskesmas memiliki langganan API sendiri (seperti OpenAI GPT-4o, DeepSeek, atau proxy internal), pilih opsi "Custom AI / OpenAI Compatible".',
-          'Isi Base URL / Endpoint, API Key, dan nama model yang diinginkan, kemudian klik "Simpan Pengaturan Agent".',
-          'Agent terpilih akan digunakan untuk memproses penyusunan naskah dinas, formulasi regulasi, dan analisis capaian.',
+          'Jika Puskesmas memiliki langganan API sendiri (seperti OpenAI GPT-4o, DeepSeek, atau proxy internal), pilih "＋ Tambah Agent Baru…" di daftar Pilihan AI Agent.',
+          'Isi Nama Agent (mis. Maku), Base URL / Endpoint, API Key, dan nama model, kemudian klik "Simpan Agent". Agent tersimpan khusus di browser ini dan bisa ditambah banyak.',
+          'Agent yang sedang dipilih bisa di-Edit atau di-Hapus lewat tombol di bawah nama agent. Agent terpilih dipakai untuk generate dokumen.',
+          'MAU GRATIS? Klik "＋ Tambah Agent Baru…" lalu klik preset: Pollinations (gratis penuh, tanpa daftar & tanpa key), OpenRouter atau Groq (gratis, daftar dengan akun Google untuk dapat key).',
+          'Catatan jujur: tidak ada cara "sekali login Gmail dapat semua AI" — tiap layanan butuh key sendiri. Preset di atas membuat prosesnya tinggal klik + tempel key.',
+          'Lembar kerja kini tampil dalam ukuran kertas sebenarnya (A4 = 794 px) dan tidak lagi menyusut; panel kiri dibuat lebih ramping agar kertas muat di layar laptop.',
         ],
         tips: [
           'Google Gemini 3.8 Flash memiliki kecepatan respons tinggi dan telah dioptimalkan secara mendalam dengan pemahaman regulasi Kemenkes RI (UU Kesehatan No 17/2023, PMK No. 43/2019, & Juknis ILP).',
@@ -89,6 +92,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
         examples: [
           'Endpoint OpenAI: https://api.openai.com/v1/chat/completions',
           'Model: gpt-4o-mini atau gpt-4o',
+          'Muse (Meta, model yang sama dengan asisten ini): Endpoint https://api.meta.ai/v1/chat/completions — Model: muse-spark-1.3 — API Key: buat di dashboard https://dev.meta.ai (format LLM|...). Catatan: ini model yang sama, tapi TANPA ingatan tentang kamu; tiap generate mulai dari nol.',
         ],
       },
     },

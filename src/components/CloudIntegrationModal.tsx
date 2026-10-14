@@ -379,8 +379,8 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
   // Custom Agent Test
   const handleTestAgent = async () => {
-    if (!agentConfig.apiKey || !agentConfig.endpoint) {
-      setTestStatus('Harap isi API Key dan Endpoint terlebih dahulu.');
+    if ((!agentConfig.apiKey && !agentConfig.noKey) || !agentConfig.endpoint) {
+      setTestStatus('Harap isi Endpoint' + (agentConfig.noKey ? '' : ' dan API Key') + ' terlebih dahulu.');
       return;
     }
     setIsTesting(true);

@@ -109,8 +109,11 @@ export interface CanvasTemplate {
 }
 
 export interface CustomAgentConfig {
+  id: string;
   enabled: boolean;
   name: string;
+  /** true = tanpa API key (mis. Pollinations gratis) */
+  noKey?: boolean;
   endpoint: string;
   apiKey: string;
   model: string;

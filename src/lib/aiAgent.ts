@@ -132,7 +132,7 @@ async function callBackendFallback(
 }
 
 function hasDirectAccess(customAgentConfig?: CustomAgentConfig): boolean {
-  if (customAgentConfig && customAgentConfig.enabled && customAgentConfig.endpoint && customAgentConfig.apiKey) return true;
+  if (customAgentConfig && customAgentConfig.enabled && customAgentConfig.endpoint && (customAgentConfig.apiKey || customAgentConfig.noKey)) return true;
   return !!(getGeminiApiKey() || '').trim();
 }
 
@@ -222,7 +222,7 @@ export async function aiGenerateDocument(p: GenerateDocumentParams): Promise<any
   }
 
   try {
-    if (customCfg && customCfg.enabled && customCfg.endpoint && customCfg.apiKey) {
+    if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
       const reply = await callCustomAgentText(customCfg, promptText, 0.7, p.signal);
       const parsed = tryParseJson(reply);
       if (parsed) return { success: true, data: parsed, provider: 'custom' };
@@ -317,7 +317,7 @@ TUGAS ANDA:
   }
 
   try {
-    if (customCfg && customCfg.enabled && customCfg.endpoint && customCfg.apiKey) {
+    if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
       const reply = await callCustomAgentText(customCfg, promptText, 0.7);
       return { success: true, updatedContent: reply.trim() };
     }
@@ -376,7 +376,7 @@ Kembalikan respon JSON terstruktur:
   }
 
   try {
-    if (customCfg && customCfg.enabled && customCfg.endpoint && customCfg.apiKey) {
+    if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
       const reply = await callCustomAgentText(customCfg, analyzePrompt, 0.5);
       const parsed = tryParseJson(reply);
       if (parsed) return { success: true, data: parsed, provider: 'custom' };
@@ -448,7 +448,7 @@ Kembalikan respon JSON murni (JSON parsable) dengan struktur:
   }
 
   try {
-    if (customCfg && customCfg.enabled && customCfg.endpoint && customCfg.apiKey) {
+    if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
       const reply = await callCustomAgentText(customCfg, promptText, 0.3);
       const parsed = tryParseJson(reply);
       if (parsed) return { success: true, data: parsed, provider: 'custom' };

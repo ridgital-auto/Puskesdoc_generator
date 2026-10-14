@@ -48,8 +48,13 @@ import { ILP_KLASTERS } from '../utils/constants';
 import { 
   substituteVariables, 
   saveDocument, 
-  getStoredAgentConfig, 
-  saveAgentConfig,
+  getStoredAgentConfig,
+  getStoredAgentList,
+  saveAgentList,
+  getActiveAgentId,
+  setActiveAgentId,
+  newAgentId,
+  deleteAgentConfig,
   getStoredUserAccount,
   UserAccount,
   getStoredDocumentTemplates, 
@@ -130,9 +135,14 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const [customMargin, setCustomMargin] = useState({ top: 2, left: 2, right: 2, bottom: 2 });
 
   // AI Agent Selection State (Default: Google Gemini 3.8 Flash via kunci API pribadi)
+  // selectedAgentId: 'gemini' atau id custom agent tersimpan (mis. "Maku")
   const [userAccount, setUserAccount] = useState<UserAccount>(getStoredUserAccount());
-  const [selectedAgent, setSelectedAgent] = useState<'gemini' | 'custom'>('gemini');
-  const [customAgentState, setCustomAgentState] = useState<CustomAgentConfig>(getStoredAgentConfig());
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('gemini');
+  const [agentList, setAgentList] = useState<CustomAgentConfig[]>(() => getStoredAgentList());
+  const [agentFormOpen, setAgentFormOpen] = useState(false);
+  const [agentForm, setAgentForm] = useState({ id: '', name: '', endpoint: '', model: '', apiKey: '', noKey: false });
+  const [agentTestStatus, setAgentTestStatus] = useState<string | null>(null);
+  const [isTestingAgent, setIsTestingAgent] = useState(false);
 
   // Tutorial Modal State
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
@@ -388,7 +398,12 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   useEffect(() => {
     setStoredTemplates(getStoredDocumentTemplates());
     setUserAccount(getStoredUserAccount());
-    setCustomAgentState(getStoredAgentConfig());
+    const list = getStoredAgentList();
+    setAgentList(list);
+    const activeId = getActiveAgentId();
+    if (activeId && list.some((a) => a.id === activeId)) {
+      setSelectedAgentId(activeId);
+    }
   }, []);
 
   const triggerNotice = (msg: string) => {
@@ -420,13 +435,100 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     }
   }, [paperSize]);
 
-  // Save Custom Agent Config
-  const handleSaveCustomAgent = () => {
-    const updated = { ...customAgentState, enabled: true };
-    setCustomAgentState(updated);
-    saveAgentConfig(updated);
-    triggerNotice('Konfigurasi Custom AI Agent berhasil disimpan!');
+  // Pilih agent (Gemini atau salah satu custom agent); pilihan tersimpan sebagai aktif
+  const handleSelectAgent = (id: string) => {
+    if (id === '__add__') {
+      setAgentForm({ id: '', name: '', endpoint: '', model: '', apiKey: '', noKey: false });
+      setAgentFormOpen(true);
+      return;
+    }
+    setSelectedAgentId(id);
+    if (id !== 'gemini') setActiveAgentId(id);
+    else setActiveAgentId(null);
   };
+
+  // Simpan custom agent (tambah baru / edit yang ada)
+  const handleSaveCustomAgent = () => {
+    if (!agentForm.name.trim()) {
+      triggerNotice('Isi dulu Nama Agent (mis. Maku).');
+      return;
+    }
+    if (!agentForm.endpoint.trim() || (!agentForm.noKey && !agentForm.apiKey.trim())) {
+      triggerNotice('Endpoint wajib diisi' + (agentForm.noKey ? '.' : ' beserta API Key.'));
+      return;
+    }
+    const rec: CustomAgentConfig = {
+      id: agentForm.id || newAgentId(),
+      enabled: true,
+      name: agentForm.name.trim(),
+      noKey: agentForm.noKey,
+      endpoint: agentForm.endpoint.trim(),
+      apiKey: agentForm.noKey ? '' : agentForm.apiKey.trim(),
+      model: agentForm.model.trim(),
+    };
+    const next = agentForm.id
+      ? agentList.map((a) => (a.id === rec.id ? rec : a))
+      : [...agentList, rec];
+    setAgentList(next);
+    saveAgentList(next);
+    setActiveAgentId(rec.id);
+    setSelectedAgentId(rec.id);
+    setAgentFormOpen(false);
+    triggerNotice(`Agent "${rec.name}" berhasil disimpan & aktif!`);
+  };
+
+  // Uji koneksi agent langsung dari form (bantu setting sampai jadi)
+  const handleTestAgentForm = async () => {
+    if (!agentForm.endpoint.trim() || (!agentForm.noKey && !agentForm.apiKey.trim())) {
+      setAgentTestStatus('Isi dulu Endpoint' + (agentForm.noKey ? '.' : ' dan API Key.'));
+      return;
+    }
+    setIsTestingAgent(true);
+    setAgentTestStatus(null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!agentForm.noKey && agentForm.apiKey.trim()) headers['Authorization'] = `Bearer ${agentForm.apiKey.trim()}`;
+      const res = await fetch(agentForm.endpoint.trim(), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: agentForm.model.trim() || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'Balas hanya dengan kata: OK' }],
+          temperature: 0.7,
+          max_tokens: 10,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const content = data.choices?.[0]?.message?.content || '';
+      if (res.ok && content) {
+        setAgentTestStatus(`Berhasil terhubung! Respon: "${String(content).slice(0, 60)}" — aman disimpan.`);
+      } else {
+        setAgentTestStatus(`Gagal (${res.status}): ${data.error?.message || 'endpoint tidak merespon format yang benar.'}`);
+      }
+    } catch (err: any) {
+      setAgentTestStatus(`Koneksi error: ${err.message || err}`);
+    } finally {
+      setIsTestingAgent(false);
+    }
+  };
+
+  const handleEditAgent = (a: CustomAgentConfig) => {
+    setAgentForm({ id: a.id, name: a.name, endpoint: a.endpoint, model: a.model, apiKey: a.apiKey, noKey: !!a.noKey });
+    setAgentFormOpen(true);
+  };
+
+  const handleDeleteAgent = (id: string) => {
+    const target = agentList.find((a) => a.id === id);
+    if (!target) return;
+    if (!window.confirm(`Hapus agent "${target.name}"?`)) return;
+    const next = agentList.filter((a) => a.id !== id);
+    setAgentList(next);
+    deleteAgentConfig(id);
+    if (selectedAgentId === id) setSelectedAgentId('gemini');
+    triggerNotice(`Agent "${target.name}" dihapus.`);
+  };
+
+  const selectedCustomAgent = agentList.find((a) => a.id === selectedAgentId);
 
   // Helper to update active tab state & sync with setCurrentDoc
   const updateActiveTab = (updates: Partial<GeneratorTabItem>, updatedDoc?: PuskesDoc) => {
@@ -581,9 +683,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     setErrorMsg(null);
     setProgressPercent(10);
     setProgressStepText(
-      selectedAgent === 'gemini'
+      selectedAgentId === 'gemini'
         ? `Menghubungkan ke Google Gemini 3.8 Flash...`
-        : `Menghubungkan ke Custom AI (${customAgentState.model || 'OpenAI'})...`
+        : `Menghubungkan ke ${selectedCustomAgent?.name || 'Custom AI'}...`
     );
 
     abortControllerRef.current = new AbortController();
@@ -596,14 +698,14 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         const next = prev + inc;
         if (next < 30) setProgressStepText('Menyiapkan prompt naskah & variabel faskes...');
         else if (next < 60) setProgressStepText('Menganalisis regulasi Kemenkes & indikator ILP...');
-        else if (next < 85) setProgressStepText(`Menyusun naskah via ${selectedAgent === 'gemini' ? 'Google Gemini 3.8 Flash' : 'Custom AI'}...`);
+        else if (next < 85) setProgressStepText(`Menyusun naskah via ${selectedAgentId === 'gemini' ? 'Google Gemini 3.8 Flash' : (selectedCustomAgent?.name || 'Custom AI')}...`);
         else setProgressStepText('Memformat bab, pasal, dan tabel akreditasi...');
         return next;
       });
     }, 550);
 
     try {
-      const activeCustomAgent = selectedAgent === 'custom' && customAgentState.enabled && customAgentState.apiKey ? customAgentState : undefined;
+      const activeCustomAgent = selectedAgentId !== 'gemini' ? agentList.find((a) => a.id === selectedAgentId && a.enabled && (a.apiKey || a.noKey)) : undefined;
 
       const json = await aiGenerateDocument({
         docType: activeDoc.docType === 'CUSTOM' ? (activeDoc.customTypeName || 'Custom') : activeDoc.docType,
@@ -1051,7 +1153,7 @@ Catatan: ${item.notes || '-'}
       {/* Main Split Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* PANEL KIRI: Kontrol Form & Parameter AI (5 Kolom) */}
-        <div className="lg:col-span-5 space-y-4 no-print">
+        <div className="lg:col-span-4 space-y-4 no-print">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2.5">
               <FileText className="w-4 h-4 text-purple-600" />
@@ -1506,47 +1608,81 @@ Catatan: ${item.notes || '-'}
                   <span>Pilihan AI Agent Generator</span>
                 </label>
                 <span className="text-[10px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                  {selectedAgent === 'gemini' ? 'Gemini 3.8 Flash' : 'Custom AI'}
+                  {selectedAgentId === 'gemini' ? 'Gemini 3.8 Flash' : (selectedCustomAgent?.name || 'Custom AI')}
                 </span>
               </div>
 
               <select
-                value={selectedAgent}
-                onChange={(e) => setSelectedAgent(e.target.value as 'gemini' | 'custom')}
+                value={agentFormOpen ? '__add__' : selectedAgentId}
+                onChange={(e) => handleSelectAgent(e.target.value)}
                 className="w-full px-2.5 py-1.5 text-xs font-semibold border border-purple-300 rounded-lg bg-white text-purple-950 focus:ring-2 focus:ring-purple-500/20 cursor-pointer"
               >
                 <option value="gemini">
                   Google Gemini 3.8 Flash (API Key Pribadi) [Default]
                 </option>
-                <option value="custom">
-                  Custom AI Agent (OpenAI / DeepSeek / Compatible)
-                </option>
+                {agentList.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}{a.model ? ` — ${a.model}` : ''}
+                  </option>
+                ))}
+                <option value="__add__">＋ Tambah Agent Baru…</option>
               </select>
 
-              {selectedAgent === 'gemini' ? (
-                <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span className="leading-tight">
-                    Agent aktif via <strong>Google Gemini 3.8 Flash</strong> memakai <strong>API key pribadimu</strong> (diatur di Backup & GDrive → tab AI Agent).
-                  </span>
-                </div>
-              ) : (
+              {agentFormOpen ? (
                 <div className="p-2.5 rounded-lg bg-white border border-purple-200 space-y-2 text-xs animate-in fade-in">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700 text-[11px]">Pengaturan Custom AI Agent</span>
-                    {customAgentState.apiKey && (
-                      <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Tersimpan
-                      </span>
-                    )}
+                    <span className="font-bold text-slate-700 text-[11px]">
+                      {agentForm.id ? 'Edit Agent' : 'Agent Baru'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">tersimpan khusus di browser ini</span>
+                  </div>
+
+                  {/* Preset cepat: klik untuk isi otomatis */}
+                  <div>
+                    <label className="block text-[10px] font-medium text-slate-500 mb-1">Pilih preset (klik untuk isi otomatis)</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {AGENT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => { setAgentTestStatus(null); setAgentForm({
+                            ...agentForm,
+                            name: agentForm.name || preset.name,
+                            endpoint: preset.endpoint,
+                            model: preset.model,
+                            noKey: !!preset.noKey,
+                            apiKey: preset.noKey ? '' : agentForm.apiKey,
+                          }); }}
+                          className="px-2 py-1 text-[10px] font-bold rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 transition-colors cursor-pointer"
+                          title={preset.keyHint}
+                        >
+                          {preset.name} <span className="font-medium text-purple-500">• {preset.badge}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {(() => {
+                      const hint = AGENT_PRESETS.find((x) => x.endpoint === agentForm.endpoint && x.model === agentForm.model)?.keyHint;
+                      return hint ? <p className="text-[10px] text-slate-500 mt-1 leading-snug">{hint}</p> : null;
+                    })()}
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Nama Agent</label>
+                    <input
+                      type="text"
+                      value={agentForm.name}
+                      onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })}
+                      placeholder="mis. Muse / Pollinations"
+                      className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Base URL / Endpoint</label>
                     <input
                       type="text"
-                      value={customAgentState.endpoint}
-                      onChange={(e) => setCustomAgentState({ ...customAgentState, endpoint: e.target.value })}
+                      value={agentForm.endpoint}
+                      onChange={(e) => setAgentForm({ ...agentForm, endpoint: e.target.value })}
                       placeholder="https://api.openai.com/v1/chat/completions"
                       className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md font-mono"
                     />
@@ -1557,33 +1693,96 @@ Catatan: ${item.notes || '-'}
                       <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Model</label>
                       <input
                         type="text"
-                        value={customAgentState.model}
-                        onChange={(e) => setCustomAgentState({ ...customAgentState, model: e.target.value })}
+                        value={agentForm.model}
+                        onChange={(e) => setAgentForm({ ...agentForm, model: e.target.value })}
                         placeholder="gpt-4o-mini"
                         className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md font-mono"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-medium text-slate-500 mb-0.5">API Key</label>
-                      <input
-                        type="password"
-                        value={customAgentState.apiKey}
-                        onChange={(e) => setCustomAgentState({ ...customAgentState, apiKey: e.target.value })}
-                        placeholder="sk-..."
-                        className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md font-mono"
-                      />
+                    {!agentForm.noKey && (
+                      <div>
+                        <label className="block text-[10px] font-medium text-slate-500 mb-0.5">API Key</label>
+                        <input
+                          type="password"
+                          value={agentForm.apiKey}
+                          onChange={(e) => setAgentForm({ ...agentForm, apiKey: e.target.value })}
+                          placeholder="sk-... / LLM|..."
+                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md font-mono"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {agentForm.noKey && (
+                    <p className="text-[10px] text-emerald-700 font-semibold">Preset ini tanpa API key — langsung bisa dipakai.</p>
+                  )}
+
+                  {agentTestStatus && (
+                    <p className={`text-[10px] font-semibold leading-snug p-2 rounded-lg border ${agentTestStatus.startsWith('Berhasil') ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                      {agentTestStatus}
+                    </p>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setAgentFormOpen(false); setAgentTestStatus(null); }}
+                      className="px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTestAgentForm}
+                      disabled={isTestingAgent}
+                      className="px-3 py-1.5 text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                      title="Kirim pesan tes kecil ke agent untuk memastikan endpoint & key benar"
+                    >
+                      {isTestingAgent ? 'Menguji…' : 'Uji Koneksi'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveCustomAgent}
+                      className="flex-1 py-1.5 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Simpan Agent
+                    </button>
+                  </div>
+                </div>
+              ) : selectedAgentId === 'gemini' ? (
+                <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="leading-tight">
+                    Agent aktif via <strong>Google Gemini 3.8 Flash</strong> memakai <strong>API key pribadimu</strong> (diatur di Backup & GDrive → tab AI Agent).
+                  </span>
+                </div>
+              ) : selectedCustomAgent ? (
+                <div className="p-2.5 rounded-lg bg-white border border-purple-200 space-y-1.5 text-xs animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 text-[11px] flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-600" /> {selectedCustomAgent.name} aktif
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEditAgent(selectedCustomAgent)}
+                        className="px-2 py-0.5 text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-200 cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAgent(selectedCustomAgent.id)}
+                        className="px-2 py-0.5 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveCustomAgent}
-                    className="w-full py-1.5 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Simpan Pengaturan Agent
-                  </button>
+                  <p className="text-[10px] text-slate-500 font-mono truncate" title={selectedCustomAgent.endpoint}>
+                    {selectedCustomAgent.model || '(tanpa nama model)'} • {selectedCustomAgent.endpoint}
+                  </p>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* AI Generator Action Buttons (with Interactive Progress Bar & Stop Generate) */}
@@ -1594,7 +1793,7 @@ Catatan: ${item.notes || '-'}
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-fuchsia-300 animate-spin" />
                       <span className="text-xs font-bold tracking-wide">
-                        Membuat Dokumen via {selectedAgent === 'gemini' ? 'Gemini 3.8 Flash' : 'Custom AI'}...
+                        Membuat Dokumen via {selectedAgentId === 'gemini' ? 'Gemini 3.8 Flash' : (selectedCustomAgent?.name || 'Custom AI')}...
                       </span>
                     </div>
                     <span className="text-xs font-mono font-bold text-fuchsia-300">
@@ -1651,7 +1850,7 @@ Catatan: ${item.notes || '-'}
         </div>
 
         {/* PANEL KANAN: Lembar Kerja A4 Presisi (Single Page View Default) */}
-        <div className="lg:col-span-7 space-y-3">
+        <div className="lg:col-span-8 space-y-3">
           {/* Paper View Controls: Ukuran Kertas, Margin, Lihat Hasil, Tutorial, & Navigasi Halaman */}
           <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs no-print">
             <div className="flex flex-wrap items-center gap-2">
@@ -1833,7 +2032,8 @@ Catatan: ${item.notes || '-'}
             <div
               style={{
                 fontFamily: 'Arial, sans-serif',
-                width: '100%',
+                width: paperDimensions.maxWidth,
+                minWidth: paperDimensions.maxWidth,
                 maxWidth: paperDimensions.maxWidth,
                 minHeight: paperDimensions.minHeight,
                 paddingTop: `${activeMargins.top}cm`,

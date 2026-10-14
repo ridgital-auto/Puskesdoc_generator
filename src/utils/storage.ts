@@ -138,14 +138,86 @@ export function resetDocumentTemplates(): void {
   localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify([]));
 }
 
-export function getStoredAgentConfig(): CustomAgentConfig {
-  try {
-    const raw = localStorage.getItem(AGENT_CONFIG_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed reading agent config from localStorage', e);
-  }
+const AGENT_LIST_KEY = 'puskesdoc_agent_list';
+const ACTIVE_AGENT_ID_KEY = 'puskesdoc_active_agent_id';
+
+function makeAgentId(): string {
+  return 'agent_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function normalizeAgent(a: any): CustomAgentConfig {
   return {
+    id: a.id || makeAgentId(),
+    enabled: !!a.enabled,
+    name: a.name || 'Custom Agent',
+    endpoint: a.endpoint || '',
+    apiKey: a.apiKey || '',
+    model: a.model || '',
+    noKey: !!a.noKey,
+  };
+}
+
+/** Daftar semua custom agent tersimpan (bisa banyak, mis. "Maku"). */
+export function getStoredAgentList(): CustomAgentConfig[] {
+  try {
+    const raw = localStorage.getItem(AGENT_LIST_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(normalizeAgent);
+    }
+  } catch (e) {
+    console.error('Failed reading agent list from localStorage', e);
+  }
+  // Migrasi sekali dari konfigurasi tunggal lama
+  try {
+    const rawOld = localStorage.getItem(AGENT_CONFIG_KEY);
+    if (rawOld) {
+      const old = JSON.parse(rawOld);
+      if (old && (old.apiKey || old.enabled)) {
+        const migrated = [normalizeAgent({ ...old, enabled: true })];
+        localStorage.setItem(AGENT_LIST_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    }
+  } catch (e) {
+    console.error('Failed migrating legacy agent config', e);
+  }
+  return [];
+}
+
+export function saveAgentList(list: CustomAgentConfig[]): void {
+  localStorage.setItem(AGENT_LIST_KEY, JSON.stringify(list));
+}
+
+export function getActiveAgentId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_AGENT_ID_KEY);
+  } catch (e) {
+    return null;
+  }
+}
+
+export function setActiveAgentId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_AGENT_ID_KEY, id);
+    else localStorage.removeItem(ACTIVE_AGENT_ID_KEY);
+  } catch (e) {
+    console.error('Failed saving active agent id', e);
+  }
+}
+
+export function newAgentId(): string {
+  return makeAgentId();
+}
+
+/** Konfigurasi agent AKTIF (kompatibel untuk Database & pengaturan terpusat). */
+export function getStoredAgentConfig(): CustomAgentConfig {
+  const list = getStoredAgentList();
+  const activeId = getActiveAgentId();
+  const found = list.find((a) => a.id === activeId) || list[0];
+  if (found) return found;
+  return {
+    id: 'default',
     enabled: false,
     name: 'OpenAI / Custom Compatible',
     endpoint: 'https://api.openai.com/v1/chat/completions',
@@ -154,8 +226,21 @@ export function getStoredAgentConfig(): CustomAgentConfig {
   };
 }
 
+/** Simpan sebagai agent aktif (upsert ke dalam daftar). */
 export function saveAgentConfig(config: CustomAgentConfig): void {
-  localStorage.setItem(AGENT_CONFIG_KEY, JSON.stringify(config));
+  const list = getStoredAgentList();
+  const rec = normalizeAgent(config);
+  const idx = list.findIndex((a) => a.id === rec.id);
+  if (idx >= 0) list[idx] = rec;
+  else list.push(rec);
+  saveAgentList(list);
+  setActiveAgentId(rec.id);
+}
+
+export function deleteAgentConfig(id: string): void {
+  const list = getStoredAgentList().filter((a) => a.id !== id);
+  saveAgentList(list);
+  if (getActiveAgentId() === id) setActiveAgentId(list[0]?.id || null);
 }
 
 /** API Key Gemini milik pengguna — hanya tersimpan di browser ini. */
@@ -382,7 +467,8 @@ export function exportBackupJSON(): string {
     documents: getStoredDocuments(),
     canvasTemplates: getStoredCanvasTemplates(),
     customTypes: getStoredCustomTypes(),
-    agentConfig: getStoredAgentConfig(),
+    agentList: getStoredAgentList(),
+    activeAgentId: getActiveAgentId(),
     geminiApiKey: getGeminiApiKey(),
     googleClientId: getGoogleClientId(),
     paperSize: getPaperSize(),
@@ -404,7 +490,12 @@ export function importBackupJSON(jsonStr: string): boolean {
     if (data.documents) localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(data.documents));
     if (data.canvasTemplates) localStorage.setItem(CANVAS_TEMPLATES_KEY, JSON.stringify(data.canvasTemplates));
     if (data.customTypes) saveCustomTypes(data.customTypes);
-    if (data.agentConfig) saveAgentConfig(data.agentConfig);
+    if (data.agentList && Array.isArray(data.agentList)) {
+      saveAgentList(data.agentList.map(normalizeAgent));
+      if (data.activeAgentId) setActiveAgentId(data.activeAgentId);
+    } else if (data.agentConfig) {
+      saveAgentConfig(data.agentConfig);
+    }
     if (data.geminiApiKey) saveGeminiApiKey(data.geminiApiKey);
     if (data.googleClientId) saveGoogleClientId(data.googleClientId);
     if (data.paperSize) savePaperSize(data.paperSize);
