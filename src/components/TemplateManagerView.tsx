@@ -101,6 +101,8 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
 
   // ContentEditable ref
   const docxEditorRef = useRef<HTMLDivElement | null>(null);
+  const paperWrapRef = useRef<HTMLDivElement | null>(null);
+  const imgBoxRef = useRef<HTMLDivElement | null>(null);
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
   const mediaDocxUploadRef = useRef<HTMLInputElement | null>(null);
 
@@ -149,6 +151,18 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     if (selectedImg?.element?.isConnected) return selectedImg.element;
     return null;
   };
+
+  // Jaga overlay seleksi tetap menempel pada gambar saat halaman di-scroll/di-resize
+  useEffect(() => {
+    if (!selectedImg) return;
+    const onScrollResize = () => positionImgOverlay();
+    window.addEventListener('scroll', onScrollResize, true);
+    window.addEventListener('resize', onScrollResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollResize, true);
+      window.removeEventListener('resize', onScrollResize);
+    };
+  }, [selectedImg]);
 
   /** Simpan HTML editor ke state template (dipanggil tiap ada perubahan visual). */
   const persistDocxHtml = () => {
@@ -206,17 +220,14 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
       const img = target as HTMLImageElement;
-      img.draggable = true;
       // Tandai sebagai terpilih (untuk query ulang yang anti-stale)
       if (docxEditorRef.current) {
         docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
           el.removeAttribute('data-img-sel');
-          (el as HTMLImageElement).style.outline = '';
         });
       }
       img.setAttribute('data-img-sel', '1');
-      img.style.outline = '2px solid #9333ea';
-      img.style.outlineOffset = '2px';
+      img.draggable = false;
       const r = img.getBoundingClientRect();
       const styleAlign =
         img.dataset.float === '1' ? 'melayang' :
@@ -231,33 +242,140 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
         align: styleAlign,
         rect: { top: r.top, left: r.left, width: r.width, height: r.height },
       });
+      requestAnimationFrame(() => positionImgOverlay());
     } else {
       if (selectedImg && !(target.closest('.image-control-bar'))) {
         if (docxEditorRef.current) {
           docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
             el.removeAttribute('data-img-sel');
-            (el as HTMLImageElement).style.outline = '';
           });
         }
+        if (imgBoxRef.current) imgBoxRef.current.style.display = 'none';
         setSelectedImg(null);
       }
     }
   };
 
-  // Drag gambar melayang dengan mouse (taruh di mana saja)
+  /** Posisikan kotak overlay seleksi tepat di atas gambar terpilih. */
+  const positionImgOverlay = () => {
+    const img = getLiveSelectedImg();
+    const wrap = paperWrapRef.current;
+    const box = imgBoxRef.current;
+    if (!img || !wrap || !box) return;
+    const wr = wrap.getBoundingClientRect();
+    const r = img.getBoundingClientRect();
+    box.style.display = 'block';
+    box.style.left = `${r.left - wr.left}px`;
+    box.style.top = `${r.top - wr.top}px`;
+    box.style.width = `${r.width}px`;
+    box.style.height = `${r.height}px`;
+  };
+
+  /** Jadikan gambar melayang: bebas ditaruh di mana saja di atas naskah. */
+  const floatImg = (img: HTMLImageElement) => {
+    const editor = docxEditorRef.current;
+    if (!editor) return;
+    const editorRect = editor.getBoundingClientRect();
+    const r = img.getBoundingClientRect();
+    editor.style.position = 'relative';
+    img.dataset.float = '1';
+    img.style.position = 'absolute';
+    img.style.left = `${Math.max(0, r.left - editorRect.left)}px`;
+    img.style.top = `${Math.max(0, r.top - editorRect.top)}px`;
+    img.style.margin = '0';
+    img.style.float = 'none';
+    img.style.display = 'block';
+    img.style.zIndex = '20';
+    img.style.cursor = 'move';
+    img.setAttribute('contenteditable', 'false');
+    img.draggable = false;
+  };
+
+  // Tarik gambar dengan mouse = otomatis melayang & bebas ditaruh di mana saja
+  // (klik biasa tanpa geser tetap hanya memilih gambar)
   const handleEditorMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName !== 'IMG' || !docxEditorRef.current) return;
     const img = target as HTMLImageElement;
-    if (img.dataset.float !== '1') return;
     e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const origLeft = parseFloat(img.style.left || '0');
-    const origTop = parseFloat(img.style.top || '0');
+    let startX = e.clientX;
+    let startY = e.clientY;
+    let floating = img.dataset.float === '1';
+    let origLeft = parseFloat(img.style.left || '0');
+    let origTop = parseFloat(img.style.top || '0');
+    let moved = false;
     const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!floating && Math.hypot(dx, dy) < 5) return; // belum dianggap drag
+      if (!floating) {
+        floatImg(img);
+        floating = true;
+        origLeft = parseFloat(img.style.left || '0');
+        origTop = parseFloat(img.style.top || '0');
+        startX = ev.clientX;
+        startY = ev.clientY;
+        setSelectedImg((prev) => (prev ? { ...prev, align: 'melayang' } : null));
+        triggerNotice('Gambar jadi melayang — bebas ditarik ke mana saja, termasuk ke atas tabel.');
+      }
+      moved = true;
       img.style.left = `${Math.max(0, origLeft + ev.clientX - startX)}px`;
       img.style.top = `${Math.max(0, origTop + ev.clientY - startY)}px`;
+      positionImgOverlay();
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (moved) persistDocxHtml();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // Resize langsung: tarik sudut gambar (proporsional, seperti editor Word)
+  const handleImgResizeStart = (e: React.MouseEvent, corner: 'nw' | 'ne' | 'sw' | 'se') => {
+    e.preventDefault();
+    e.stopPropagation();
+    const img = getLiveSelectedImg();
+    if (!img) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = img.offsetWidth || 200;
+    const startH = img.offsetHeight || 150;
+    const aspect = startW / Math.max(1, startH);
+    const isFloat = img.dataset.float === '1';
+    const startLeft = parseFloat(img.style.left || '0');
+    const startTop = parseFloat(img.style.top || '0');
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      let w = startW;
+      let l = startLeft;
+      let t = startTop;
+      if (corner === 'se') {
+        w = startW + dx;
+      } else if (corner === 'sw') {
+        w = startW - dx;
+        l = startLeft + dx;
+      } else if (corner === 'ne') {
+        w = startW + dx;
+        t = startTop - (w / aspect - startH);
+      } else {
+        w = startW - dx;
+        l = startLeft + dx;
+        t = startTop - (w / aspect - startH);
+      }
+      w = Math.max(40, Math.min(1200, w));
+      const h = w / aspect;
+      img.style.width = `${w}px`;
+      img.style.height = `${h}px`;
+      img.style.maxWidth = isFloat ? 'none' : '100%';
+      img.style.objectFit = 'contain';
+      if (isFloat) {
+        img.style.left = `${Math.max(0, l)}px`;
+        img.style.top = `${Math.max(0, t)}px`;
+      }
+      positionImgOverlay();
+      setSelectedImg((prev) => (prev ? { ...prev, width: Math.round(w), element: img } : null));
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
@@ -287,20 +405,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     const editor = docxEditorRef.current;
     if (align === 'melayang') {
       // Mode melayang: gambar bebas ditaruh di mana saja di atas naskah
-      const editorRect = editor.getBoundingClientRect();
-      const r = img.getBoundingClientRect();
-      editor.style.position = 'relative';
-      img.dataset.float = '1';
-      img.style.position = 'absolute';
-      img.style.left = `${Math.max(0, r.left - editorRect.left)}px`;
-      img.style.top = `${Math.max(0, r.top - editorRect.top)}px`;
-      img.style.margin = '0';
-      img.style.float = 'none';
-      img.style.display = 'block';
-      img.style.zIndex = '20';
-      img.style.cursor = 'move';
-      img.setAttribute('contenteditable', 'false');
-      img.draggable = false;
+      floatImg(img);
       triggerNotice('Mode melayang aktif: tarik gambar untuk menaruh di mana saja.');
     } else {
       // Kembali ke alur teks normal
@@ -311,7 +416,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       img.style.zIndex = '';
       img.style.cursor = '';
       img.removeAttribute('contenteditable');
-      img.draggable = true;
+      img.draggable = false;
       if (align === 'center') {
       img.style.display = 'block';
       img.style.margin = '14px auto';
@@ -2244,9 +2349,9 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                             if (docxEditorRef.current) {
                               docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
                                 el.removeAttribute('data-img-sel');
-                                (el as HTMLImageElement).style.outline = '';
                               });
                             }
+                            if (imgBoxRef.current) imgBoxRef.current.style.display = 'none';
                             setSelectedImg(null);
                           }}
                           className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
@@ -2314,10 +2419,35 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                         minHeight: editingTemplate.orientation === 'landscape' ? '750px' : '1050px',
                         boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
                       }}
+                      ref={paperWrapRef}
                       className={`bg-white text-slate-900 p-8 sm:p-12 rounded-sm border transition-all relative flex flex-col justify-between ${
                         isPaperDragOver ? 'ring-4 ring-purple-500 border-purple-500 bg-purple-50/20' : 'border-slate-300'
                       }`}
                     >
+                      {/* Overlay seleksi gambar: bingkai + handle resize langsung */}
+                      {selectedImg && (
+                        <div ref={imgBoxRef} className="absolute z-30 pointer-events-none" style={{ display: 'none' }}>
+                          <div className="absolute inset-0 border-2 border-purple-600 rounded-[2px]" />
+                          {(['nw', 'ne', 'sw', 'se'] as const).map((pos) => (
+                            <div
+                              key={pos}
+                              onMouseDown={(e) => handleImgResizeStart(e, pos)}
+                              className="absolute w-3.5 h-3.5 bg-white border-2 border-purple-600 rounded-full shadow-md pointer-events-auto"
+                              style={{
+                                left: pos.includes('w') ? '-7px' : undefined,
+                                right: pos.includes('e') ? '-7px' : undefined,
+                                top: pos.includes('n') ? '-7px' : undefined,
+                                bottom: pos.includes('s') ? '-7px' : undefined,
+                                cursor: `${pos}-resize`,
+                              }}
+                              title="Tarik untuk resize gambar"
+                            />
+                          ))}
+                          <div className="absolute -top-7 left-0 whitespace-nowrap text-[10px] font-bold text-white bg-purple-600 px-2 py-0.5 rounded-md shadow">
+                            Tarik sudut untuk resize &bull; Tarik gambar untuk pindah
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-5">
                         {/* CASE A: ORIGINAL DOCX DISPLAY (SESUAI ASLINYA, DIRECTLY EDITABLE) */}
                         {editingTemplate.originalDocxHtml && docxDisplayMode === 'original_docx' ? (
