@@ -136,9 +136,27 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     element: HTMLImageElement | null;
     src: string;
     width: number;
-    align: 'left' | 'center' | 'right' | 'float-left' | 'float-right';
+    align: 'left' | 'center' | 'right' | 'float-left' | 'float-right' | 'melayang';
     rect: { top: number; left: number; width: number; height: number };
   } | null>(null);
+
+  /** Ambil elemen gambar terpilih yang MASIH hidup di DOM (anti-stale). */
+  const getLiveSelectedImg = (): HTMLImageElement | null => {
+    if (docxEditorRef.current) {
+      const marked = docxEditorRef.current.querySelector('img[data-img-sel="1"]') as HTMLImageElement | null;
+      if (marked) return marked;
+    }
+    if (selectedImg?.element?.isConnected) return selectedImg.element;
+    return null;
+  };
+
+  /** Simpan HTML editor ke state template (dipanggil tiap ada perubahan visual). */
+  const persistDocxHtml = () => {
+    if (docxEditorRef.current) {
+      const newHtml = docxEditorRef.current.innerHTML;
+      setEditingTemplate((prev) => (prev ? { ...prev, originalDocxHtml: newHtml } : null));
+    }
+  };
 
   useEffect(() => {
     if (isEditorOpen) {
@@ -148,24 +166,40 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     }
   }, [isEditorOpen]);
 
+  // Kunci render terakhir agar tidak me-render ulang base64 (yang menghapus editan)
+  // saat hanya ganti view (paper_design <-> form) yang me-remount div preview.
+  const docxRenderKey = useRef('');
   // Render tampilan ASLI Word (high-fidelity via docx-preview) setiap kali
   // editor dibuka atau dokumen Word diganti. Ini memperbaiki bug: sebelumnya
   // innerHTML diisi sebelum editor tampil (ref masih null) sehingga kosong.
   useEffect(() => {
+    const el = docxEditorRef.current;
+    const tpl = editingTemplate;
     if (
-      isEditorOpen &&
-      docxDisplayMode === 'original_docx' &&
-      editingTemplate?.originalDocxBase64 &&
-      docxEditorRef.current
+      !isEditorOpen ||
+      editorViewMode !== 'paper_design' ||
+      docxDisplayMode !== 'original_docx' ||
+      !tpl?.originalDocxBase64 ||
+      !el
     ) {
-      const el = docxEditorRef.current;
-      const base64 = editingTemplate.originalDocxBase64;
-      const fallbackHtml = editingTemplate.originalDocxHtml;
-      renderDocxToContainer(base64, el).catch(() => {
-        if (fallbackHtml) el.innerHTML = fallbackHtml;
-      });
+      return;
     }
-  }, [isEditorOpen, docxDisplayMode, docxVersion]);
+    const key = `${tpl.id}|${docxVersion}|${docxDisplayMode}`;
+    if (docxRenderKey.current === key) {
+      // Sudah dirender untuk versi ini — bila div kosong karena remount
+      // (ganti view), pulihkan HTML tersimpan yang sudah termasuk editan user.
+      if (!el.innerHTML.trim() && tpl.originalDocxHtml) {
+        el.innerHTML = tpl.originalDocxHtml;
+      }
+      return;
+    }
+    docxRenderKey.current = key;
+    const base64 = tpl.originalDocxBase64;
+    const fallbackHtml = tpl.originalDocxHtml;
+    renderDocxToContainer(base64, el).catch(() => {
+      if (fallbackHtml) el.innerHTML = fallbackHtml;
+    });
+  }, [isEditorOpen, editorViewMode, docxDisplayMode, docxVersion, editingTemplate]);
 
   // Click handler on paper editor to select/inspect images
   const handleEditorClick = (e: React.MouseEvent) => {
@@ -173,12 +207,23 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     if (target.tagName === 'IMG') {
       const img = target as HTMLImageElement;
       img.draggable = true;
+      // Tandai sebagai terpilih (untuk query ulang yang anti-stale)
+      if (docxEditorRef.current) {
+        docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
+          el.removeAttribute('data-img-sel');
+          (el as HTMLImageElement).style.outline = '';
+        });
+      }
+      img.setAttribute('data-img-sel', '1');
+      img.style.outline = '2px solid #9333ea';
+      img.style.outlineOffset = '2px';
       const r = img.getBoundingClientRect();
       const styleAlign =
+        img.dataset.float === '1' ? 'melayang' :
         img.style.float === 'left' ? 'float-left' :
         img.style.float === 'right' ? 'float-right' :
         (img.style.marginLeft === 'auto' && img.style.marginRight === 'auto') || img.parentElement?.style.textAlign === 'center' ? 'center' : 'left';
-      
+
       setSelectedImg({
         element: img,
         src: img.src,
@@ -188,30 +233,86 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       });
     } else {
       if (selectedImg && !(target.closest('.image-control-bar'))) {
+        if (docxEditorRef.current) {
+          docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
+            el.removeAttribute('data-img-sel');
+            (el as HTMLImageElement).style.outline = '';
+          });
+        }
         setSelectedImg(null);
       }
     }
   };
 
-  // Resize selected image
-  const handleResizeSelectedImg = (newWidthPx: number) => {
-    if (!selectedImg || !selectedImg.element) return;
-    selectedImg.element.style.width = `${newWidthPx}px`;
-    selectedImg.element.style.maxWidth = '100%';
-    selectedImg.element.style.height = 'auto';
-    selectedImg.element.style.objectFit = 'contain';
-    setSelectedImg((prev) => prev ? { ...prev, width: newWidthPx } : null);
-    if (docxEditorRef.current) {
-      const newHtml = docxEditorRef.current.innerHTML;
-      setEditingTemplate((prev) => prev ? { ...prev, originalDocxHtml: newHtml } : null);
-    }
+  // Drag gambar melayang dengan mouse (taruh di mana saja)
+  const handleEditorMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'IMG' || !docxEditorRef.current) return;
+    const img = target as HTMLImageElement;
+    if (img.dataset.float !== '1') return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origLeft = parseFloat(img.style.left || '0');
+    const origTop = parseFloat(img.style.top || '0');
+    const onMove = (ev: MouseEvent) => {
+      img.style.left = `${Math.max(0, origLeft + ev.clientX - startX)}px`;
+      img.style.top = `${Math.max(0, origTop + ev.clientY - startY)}px`;
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      persistDocxHtml();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
-  // Align selected image
-  const handleAlignSelectedImg = (align: 'left' | 'center' | 'right' | 'float-left' | 'float-right') => {
-    if (!selectedImg || !selectedImg.element) return;
-    const img = selectedImg.element;
-    if (align === 'center') {
+  // Resize selected image (pakai elemen live agar selalu berhasil)
+  const handleResizeSelectedImg = (newWidthPx: number) => {
+    const img = getLiveSelectedImg();
+    if (!img) return;
+    img.style.width = `${newWidthPx}px`;
+    img.style.maxWidth = img.dataset.float === '1' ? 'none' : '100%';
+    img.style.height = 'auto';
+    img.style.objectFit = 'contain';
+    setSelectedImg((prev) => (prev ? { ...prev, width: newWidthPx, element: img } : null));
+    persistDocxHtml();
+  };
+
+  // Align selected image (pakai elemen live agar selalu berhasil)
+  const handleAlignSelectedImg = (align: 'left' | 'center' | 'right' | 'float-left' | 'float-right' | 'melayang') => {
+    const img = getLiveSelectedImg();
+    if (!img || !docxEditorRef.current) return;
+    const editor = docxEditorRef.current;
+    if (align === 'melayang') {
+      // Mode melayang: gambar bebas ditaruh di mana saja di atas naskah
+      const editorRect = editor.getBoundingClientRect();
+      const r = img.getBoundingClientRect();
+      editor.style.position = 'relative';
+      img.dataset.float = '1';
+      img.style.position = 'absolute';
+      img.style.left = `${Math.max(0, r.left - editorRect.left)}px`;
+      img.style.top = `${Math.max(0, r.top - editorRect.top)}px`;
+      img.style.margin = '0';
+      img.style.float = 'none';
+      img.style.display = 'block';
+      img.style.zIndex = '20';
+      img.style.cursor = 'move';
+      img.setAttribute('contenteditable', 'false');
+      img.draggable = false;
+      triggerNotice('Mode melayang aktif: tarik gambar untuk menaruh di mana saja.');
+    } else {
+      // Kembali ke alur teks normal
+      delete img.dataset.float;
+      img.style.position = '';
+      img.style.left = '';
+      img.style.top = '';
+      img.style.zIndex = '';
+      img.style.cursor = '';
+      img.removeAttribute('contenteditable');
+      img.draggable = true;
+      if (align === 'center') {
       img.style.display = 'block';
       img.style.margin = '14px auto';
       img.style.float = 'none';
@@ -231,12 +332,10 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       img.style.display = 'inline-block';
       img.style.float = 'right';
       img.style.margin = '8px 0 12px 16px';
+      }
     }
-    setSelectedImg((prev) => prev ? { ...prev, align } : null);
-    if (docxEditorRef.current) {
-      const newHtml = docxEditorRef.current.innerHTML;
-      setEditingTemplate((prev) => prev ? { ...prev, originalDocxHtml: newHtml } : null);
-    }
+    setSelectedImg((prev) => (prev ? { ...prev, align, element: img } : null));
+    persistDocxHtml();
   };
 
   // Delete selected image
@@ -2111,7 +2210,22 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                         >
                           Float Kanan
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAlignSelectedImg(selectedImg.align === 'melayang' ? 'left' : 'melayang')}
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors ${
+                            selectedImg.align === 'melayang' ? 'bg-purple-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
+                          }`}
+                          title="Melayang: gambar bebas ditaruh di mana saja di atas naskah (tarik dengan mouse). Klik lagi untuk kembali ke alur teks."
+                        >
+                          {selectedImg.align === 'melayang' ? '✓ Melayang' : 'Melayang'}
+                        </button>
                       </div>
+                      {selectedImg.align === 'melayang' && (
+                        <p className="text-[10px] text-purple-700 font-medium w-full">
+                          Mode melayang aktif — tarik gambar dengan mouse untuk menaruh di mana saja di atas naskah.
+                        </p>
+                      )}
 
                       {/* Actions: Delete & Close */}
                       <div className="flex items-center gap-1.5">
@@ -2126,7 +2240,15 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSelectedImg(null)}
+                          onClick={() => {
+                            if (docxEditorRef.current) {
+                              docxEditorRef.current.querySelectorAll('img[data-img-sel="1"]').forEach((el) => {
+                                el.removeAttribute('data-img-sel');
+                                (el as HTMLImageElement).style.outline = '';
+                              });
+                            }
+                            setSelectedImg(null);
+                          }}
                           className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
                           title="Tutup panel pengaturan gambar"
                         >
@@ -2234,6 +2356,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                               contentEditable={true}
                               suppressContentEditableWarning={true}
                               onClick={handleEditorClick}
+                              onMouseDown={handleEditorMouseDown}
                               onBlur={(e) => {
                                 const newHtml = e.currentTarget.innerHTML;
                                 setEditingTemplate((prev) => prev ? { ...prev, originalDocxHtml: newHtml } : null);

@@ -237,6 +237,8 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
           'Buat template baru: tab Template → "Tambah Template" → pilih "Upload Dokumen Word" atau buat manual.',
           'Dokumen Word yang diunggah kini tampil persis sesuai aslinya (tabel, kop, gambar) dan langsung bisa diklik untuk diedit di preview.',
           'Saat membuat/mengedit template, isi "Kategori Template" (mis. SOP, SK, Dokumen Word Asli) agar mudah dicari.',
+          'Klik gambar di naskah untuk resize (geser slider/gunakan preset) dan atur posisi; pilih "Melayang" agar gambar bebas ditarik dan ditaruh di mana saja di atas naskah.',
+          'Pindah ke "Editor Form Seksi" lalu kembali ke "Desain Kertas" tidak lagi menghilangkan preview — hasil editan tetap tersimpan.',
           'Pada jendela Pratinjau atau Lembar Kerja, klik "Unduh .DOCX" untuk mengunduh naskah Word lengkap.',
           'Klik "Simpan ke Media" untuk menyimpan berkas ke Pustaka Media. Pustaka Media kini mulai kosong — isi dengan logo, stempel, dan dokumen faskes sendiri.',
           'Semua dokumen tercatat di "Riwayat Dokumen" sehingga terhindar dari duplikasi.',
