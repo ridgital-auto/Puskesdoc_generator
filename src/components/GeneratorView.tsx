@@ -69,9 +69,10 @@ import {
 } from '../utils/storage';
 import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
-import { aiGenerateDocument, aiExecuteBracketPrompt } from '../lib/aiAgent';
+import { aiGenerateDocument, aiExecuteBracketPrompt, aiFillTemplateBrackets } from '../lib/aiAgent';
 import { AGENT_PRESETS } from '../lib/agentPresets';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
+import { prepareTemplateForFill, applyFillsToTemplate, htmlToPlainText } from '../utils/templateFill';
 import { PaperSizeSelector } from './PaperSizeSelector';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
@@ -995,6 +996,42 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
     try {
       const activeCustomAgent = selectedAgentId !== 'gemini' ? agentList.find((a) => a.id === selectedAgentId && a.enabled && (a.apiKey || a.noKey)) : undefined;
+
+      // MODE ISI-TEMPLATE: dokumen Word yang mengandung penanda [...] → AI HANYA mengisi
+      // bagian bertanda itu, struktur/tabel/format template tidak diubah sama sekali.
+      if (activeDoc.originalDocxHtml && activeDoc.originalDocxHtml.includes('[')) {
+        const varMapFill: Record<string, any> = variables.reduce((acc: any, item) => {
+          acc[item.key] = item.value;
+          return acc;
+        }, {});
+        const prep = prepareTemplateForFill(activeDoc.originalDocxHtml, varMapFill);
+        if (prep && prep.markers.length > 0) {
+          setProgressStepText(`Mengisi ${prep.markers.length} bagian bertanda [...] via ${selectedAgentId === 'gemini' ? 'Gemini' : (selectedCustomAgent?.name || 'Custom AI')}...`);
+          const fillRes = await aiFillTemplateBrackets({
+            plainTemplate: prep.plainTemplate,
+            markers: prep.markers,
+            context: activeTab.contextInput,
+            variables: varMapFill,
+            customAgentConfig: activeCustomAgent,
+            signal: abortControllerRef.current.signal,
+          });
+          if (fillRes.success && fillRes.fills) {
+            const { html: filledHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills);
+            const filledText = htmlToPlainText(filledHtml);
+            const newSectionsFill = activeDoc.sections.length > 0
+              ? activeDoc.sections.map((s, i) => (i === 0 ? { ...s, content: filledText } : s))
+              : [{ id: 'sec_fill_0', title: 'Naskah Terisi', content: filledText }];
+            updateActiveTab({}, { ...activeDoc, originalDocxHtml: filledHtml, sections: newSectionsFill });
+            setProgressPercent(100);
+            setProgressStepText('Selesai!');
+            triggerNotice(`Berhasil mengisi ${filledCount} dari ${prep.markers.length} bagian bertanda [...] langsung di template!`);
+          } else {
+            setErrorMsg(fillRes.error || 'Gagal mengisi template');
+          }
+          return;
+        }
+        // Tidak ada [...] → lanjut ke mode generate biasa di bawah
+      }
 
       // Susun panduan struktur template agar hasil generate MENGIKUTI template pengguna
       let templateStructure = '';
@@ -1937,7 +1974,7 @@ Catatan: ${item.notes || '-'}
                   type="button"
                   onClick={handleOpenAddAgent}
                   className="shrink-0 px-2.5 py-1.5 text-xs font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg transition-colors cursor-pointer"
-                  title="Tambah AI agent baru (mis. OpenRouter, Groq, Muse)"
+                  title="Tambah AI agent baru (mis. Pollinations, OpenRouter, Groq, Muse)"
                 >
                   ＋ Tambah
                 </button>
@@ -1993,7 +2030,7 @@ Catatan: ${item.notes || '-'}
                       type="text"
                       value={agentForm.name}
                       onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })}
-                      placeholder="mis. Muse / OpenRouter"
+                      placeholder="mis. Muse / Pollinations"
                       className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md"
                     />
                   </div>

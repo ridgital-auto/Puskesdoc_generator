@@ -529,8 +529,81 @@ Kembalikan respon JSON murni (JSON parsable) dengan struktur:
   }
 }
 
-export async function aiAnalyzeDoctype(p: { sampleText: string; customAgentConfig?: CustomAgentConfig }): Promise<any> {
-  if (!p.sampleText || p.sampleText.trim().length === 0) {
+export interface FillBracketsParams {
+  /** Template versi teks biasa; bagian yang harus diisi ditandai [[FILL_n]] */
+  plainTemplate: string;
+  /** Daftar petunjuk: id -> teks asli di dalam [...] */
+  markers: { id: number; original: string }[];
+  context?: string;
+  variables?: Record<string, any>;
+  customAgentConfig?: CustomAgentConfig;
+  signal?: AbortSignal;
+}
+
+/**
+ * Mode isi-template: AI HANYA menulis isi untuk bagian bertanda [[FILL_n]].
+ * Balasan berupa JSON {fills: {"1": "...", ...}} — bukan dokumen utuh.
+ */
+export async function aiFillTemplateBrackets(p: FillBracketsParams): Promise<any> {
+  const markerList = p.markers
+    .map((m) => `${m.id}. [[FILL_${m.id}]] — petunjuk: "${m.original}"`)
+    .join('\n');
+
+  const promptText = `Anda adalah penulis naskah dinas Puskesmas yang presisi dan patuh instruksi.
+
+TEMPLATE DOKUMEN (bagian yang HARUS diisi ditandai [[FILL_n]]):
+"""
+${p.plainTemplate}
+"""
+
+DAFTAR BAGIAN YANG HARUS DIISI:
+${markerList}
+
+Konteks pengguna: ${p.context || '-'}
+Variabel faskes: ${JSON.stringify(p.variables || {})}
+
+TUGAS ANDA:
+1. Tulis isi yang tepat untuk SETIAP nomor [[FILL_n]] di atas, memakai petunjuknya.
+   Pakai bahasa naskah dinas Indonesia yang formal, lugas, dan sesuai standar akreditasi Puskesmas.
+2. JANGAN mengubah, menambah, atau mengomentari bagian lain template.
+3. Jawab HANYA dengan JSON valid — tanpa kalimat pembuka/penutup. Format:
+{"fills": {"1": "isi bagian 1...", "2": "isi bagian 2..."}}
+4. Wajib sertakan SEMUA nomor dari 1 sampai ${p.markers.length}.`;
+
+  const customCfg = p.customAgentConfig;
+  if (!hasDirectAccess(customCfg)) {
+    return callBackendFallback('/api/fill-template', { ...p, signal: undefined }, p.signal);
+  }
+
+  try {
+    let reply: string;
+    if (customCfg && customCfg.enabled && customCfg.endpoint && (customCfg.apiKey || customCfg.noKey)) {
+      reply = await callCustomAgentText(customCfg, promptText, 0.5, p.signal);
+    } else {
+      const ai = getGeminiClient();
+      const geminiResponse = await ai.models.generateContent({
+        model: GEMINI_FLASH_MODEL,
+        contents: promptText,
+        config: {
+          systemInstruction: ILP_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+        },
+      });
+      reply = geminiResponse.text || '{}';
+    }
+    const parsed = tryParseJson(reply);
+    const fills = parsed?.fills || parsed;
+    if (fills && typeof fills === 'object' && Object.keys(fills).length > 0) {
+      return { success: true, fills, provider: customCfg ? 'custom' : 'gemini' };
+    }
+    return { success: false, error: 'AI tidak mengembalikan isian yang valid. Coba lagi.' };
+  } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
+    return { success: false, error: error.message || 'Gagal mengisi template' };
+  }
+}
+
+export async function aiAnalyzeDoctype(p: { sampleText: string; customAgentConfig?: CustomAgentConfig }): Promise<any> {  if (!p.sampleText || p.sampleText.trim().length === 0) {
     return { success: false, error: 'Teks dokumen contoh tidak boleh kosong' };
   }
   const analyzePrompt = `Anda adalah Analis Tata Naskah Akreditasi Puskesmas Kemenkes RI.

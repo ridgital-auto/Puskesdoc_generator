@@ -82,7 +82,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
           'Jika Puskesmas memiliki langganan API sendiri (seperti OpenAI GPT-4o, DeepSeek, atau proxy internal), klik tombol "＋ Tambah" di samping daftar Pilihan AI Agent.',
           'Isi Nama Agent (mis. Maku), Base URL / Endpoint, API Key, dan nama model, kemudian klik "Simpan Agent". Agent tersimpan khusus di browser ini dan bisa ditambah banyak.',
           'Agent yang sedang dipilih bisa di-Edit atau di-Hapus lewat tombol di bawah nama agent. Agent terpilih dipakai untuk generate dokumen.',
-          'MAU GRATIS? Klik tombol "＋ Tambah" lalu klik preset: OpenRouter atau Groq (gratis, daftar dengan akun Google untuk dapat key).',
+          'MAU GRATIS? Klik tombol "＋ Tambah" lalu klik preset: Pollinations (gratis penuh, tanpa daftar & tanpa key), OpenRouter atau Groq (gratis, daftar dengan akun Google untuk dapat key).',
           'Catatan jujur: tidak ada cara "sekali login Gmail dapat semua AI" — tiap layanan butuh key sendiri. Preset di atas membuat prosesnya tinggal klik + tempel key.',
           'Lembar kerja kini tampil dalam ukuran kertas sebenarnya (A4 = 794 px) dan tidak lagi menyusut; panel kiri dibuat lebih ramping agar kertas muat di layar laptop.',
         ],
