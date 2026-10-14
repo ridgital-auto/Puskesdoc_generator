@@ -20,10 +20,11 @@ import {
   HardDrive,
   FileCode,
   Tag,
-  AlertCircle
+  AlertCircle,
+  CopyX
 } from 'lucide-react';
 import { MediaItem } from '../types';
-import { getStoredMedia, saveMediaItem, deleteMediaItem, saveAllMedia } from '../utils/storage';
+import { getStoredMedia, saveMediaItem, deleteMediaItem, saveAllMedia, removeDuplicateMedia } from '../utils/storage';
 
 interface MediaLibraryViewProps {
   onInsertToTemplate?: (media: MediaItem) => void;
@@ -204,6 +205,23 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({ onInsertToTe
             onChange={(e) => handleFiles(e.target.files)}
             className="hidden"
           />
+          <button
+            type="button"
+            onClick={() => {
+              const removed = removeDuplicateMedia();
+              if (removed > 0) {
+                setMediaList(getStoredMedia());
+                triggerNotice(`${removed} gambar duplikat dihapus dari Pustaka Media.`);
+              } else {
+                triggerNotice('Tidak ada duplikat ditemukan — Pustaka Media sudah bersih.');
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-sm transition-all active:scale-95 cursor-pointer"
+            title="Hapus gambar yang kontennya sama (duplikat)"
+          >
+            <CopyX className="w-4 h-4" />
+            <span>Hapus Duplikat</span>
+          </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

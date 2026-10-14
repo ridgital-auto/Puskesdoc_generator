@@ -437,14 +437,17 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
   // Pilih agent (Gemini atau salah satu custom agent); pilihan tersimpan sebagai aktif
   const handleSelectAgent = (id: string) => {
-    if (id === '__add__') {
-      setAgentForm({ id: '', name: '', endpoint: '', model: '', apiKey: '', noKey: false });
-      setAgentFormOpen(true);
-      return;
-    }
+    setAgentFormOpen(false);
     setSelectedAgentId(id);
     if (id !== 'gemini') setActiveAgentId(id);
     else setActiveAgentId(null);
+  };
+
+  // Buka form tambah agent baru (via tombol, lebih jelas dari opsi dropdown)
+  const handleOpenAddAgent = () => {
+    setAgentForm({ id: '', name: '', endpoint: '', model: '', apiKey: '', noKey: false });
+    setAgentTestStatus(null);
+    setAgentFormOpen(true);
   };
 
   // Simpan custom agent (tambah baru / edit yang ada)
@@ -1612,21 +1615,30 @@ Catatan: ${item.notes || '-'}
                 </span>
               </div>
 
-              <select
-                value={agentFormOpen ? '__add__' : selectedAgentId}
-                onChange={(e) => handleSelectAgent(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs font-semibold border border-purple-300 rounded-lg bg-white text-purple-950 focus:ring-2 focus:ring-purple-500/20 cursor-pointer"
-              >
-                <option value="gemini">
-                  Google Gemini 3.8 Flash (API Key Pribadi) [Default]
-                </option>
-                {agentList.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}{a.model ? ` — ${a.model}` : ''}
+              <div className="flex gap-1.5">
+                <select
+                  value={selectedAgentId}
+                  onChange={(e) => handleSelectAgent(e.target.value)}
+                  className="flex-1 min-w-0 px-2.5 py-1.5 text-xs font-semibold border border-purple-300 rounded-lg bg-white text-purple-950 focus:ring-2 focus:ring-purple-500/20 cursor-pointer"
+                >
+                  <option value="gemini">
+                    Google Gemini 3.8 Flash (API Key Pribadi) [Default]
                   </option>
-                ))}
-                <option value="__add__">＋ Tambah Agent Baru…</option>
-              </select>
+                  {agentList.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}{a.model ? ` — ${a.model}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleOpenAddAgent}
+                  className="shrink-0 px-2.5 py-1.5 text-xs font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg transition-colors cursor-pointer"
+                  title="Tambah AI agent baru (mis. Pollinations, OpenRouter, Groq, Muse)"
+                >
+                  ＋ Tambah
+                </button>
+              </div>
 
               {agentFormOpen ? (
                 <div className="p-2.5 rounded-lg bg-white border border-purple-200 space-y-2 text-xs animate-in fade-in">

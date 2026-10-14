@@ -52,6 +52,7 @@ import {
   resetDocumentTemplates,
   getStoredMedia,
   saveMediaItem,
+  mediaExistsByDataUrl,
   getStoredVariables
 } from '../utils/storage';
 import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
@@ -183,6 +184,8 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
   // Kunci render terakhir agar tidak me-render ulang base64 (yang menghapus editan)
   // saat hanya ganti view (paper_design <-> form) yang me-remount div preview.
   const docxRenderKey = useRef('');
+  // true = render dari base64 (upload/re-upload baru); false = pakai HTML simpanan (buka template tersimpan)
+  const forceBase64Render = useRef(false);
   // Render tampilan ASLI Word (high-fidelity via docx-preview) setiap kali
   // editor dibuka atau dokumen Word diganti. Ini memperbaiki bug: sebelumnya
   // innerHTML diisi sebelum editor tampil (ref masih null) sehingga kosong.
@@ -208,11 +211,21 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       return;
     }
     docxRenderKey.current = key;
-    const base64 = tpl.originalDocxBase64;
-    const fallbackHtml = tpl.originalDocxHtml;
-    renderDocxToContainer(base64, el).catch(() => {
-      if (fallbackHtml) el.innerHTML = fallbackHtml;
-    });
+    if (forceBase64Render.current && tpl.originalDocxBase64) {
+      // Upload baru: render presisi dari file Word asli
+      forceBase64Render.current = false;
+      const base64 = tpl.originalDocxBase64;
+      const fallbackHtml = tpl.originalDocxHtml;
+      renderDocxToContainer(base64, el).catch(() => {
+        if (fallbackHtml) el.innerHTML = fallbackHtml;
+      });
+    } else if (tpl.originalDocxHtml) {
+      // Buka template tersimpan: pakai HTML simpanan (termasuk gambar yang disisipkan & editan)
+      el.innerHTML = tpl.originalDocxHtml;
+    } else if (tpl.originalDocxBase64) {
+      const base64 = tpl.originalDocxBase64;
+      renderDocxToContainer(base64, el).catch(() => {});
+    }
   }, [isEditorOpen, editorViewMode, docxDisplayMode, docxVersion, editingTemplate]);
 
   // Click handler on paper editor to select/inspect images
@@ -822,11 +835,15 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setEditorViewMode('paper_design');
       setIsCreateChoiceModalOpen(false);
       setIsEditorOpen(true);
+      forceBase64Render.current = true;
       setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       // Save any extracted embedded images to media library
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
+        let _added = 0;
         docxResult.embeddedImages.forEach((img, idx) => {
+          if (mediaExistsByDataUrl(img.dataUrl)) return; // cegah duplikat
+          _added++;
           saveMediaItem({
             id: 'med_docx_' + Date.now() + '_' + idx,
             name: `${file.name.replace(/\.docx$/i, '')}_${img.name}`,
@@ -840,7 +857,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
           });
         });
         setMediaList(getStoredMedia());
-        triggerNotice(`Naskah Word "${file.name}" beserta ${docxResult.embeddedImages.length} gambar berhasil dimuat SESUAI ASLINYA!`);
+        triggerNotice(`Naskah Word "${file.name}" berhasil dimuat SESUAI ASLINYA!` + (_added > 0 ? ` ${_added} gambar baru disimpan ke Pustaka Media.` : ` Gambar sudah ada di Pustaka Media (tidak diduplikasi).`));
       } else {
         triggerNotice(`Naskah Word "${file.name}" berhasil dimuat SESUAI ASLINYA dan siap diedit langsung!`);
       }
@@ -920,10 +937,14 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setIsCreateChoiceModalOpen(false);
       setIsMediaDocxPickerOpen(false);
       setIsEditorOpen(true);
+      forceBase64Render.current = true;
       setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
+        let _added = 0;
         docxResult.embeddedImages.forEach((img, idx) => {
+          if (mediaExistsByDataUrl(img.dataUrl)) return; // cegah duplikat
+          _added++;
           saveMediaItem({
             id: 'med_docx_' + Date.now() + '_' + idx,
             name: `${mediaItem.name.replace(/\.docx$/i, '')}_${img.name}`,
@@ -937,7 +958,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
           });
         });
         setMediaList(getStoredMedia());
-        triggerNotice(`Berkas Word "${mediaItem.name}" beserta ${docxResult.embeddedImages.length} gambar berhasil dimuat dari Pustaka Media!`);
+        triggerNotice(`Berkas Word "${mediaItem.name}" berhasil dimuat dari Pustaka Media!` + (_added > 0 ? ` ${_added} gambar baru disimpan.` : ` Gambar sudah ada (tidak diduplikasi).`));
       } else {
         triggerNotice(`Berkas Word "${mediaItem.name}" berhasil dipanggil dari Pustaka Media sesuai tampilan aslinya!`);
       }
@@ -989,7 +1010,10 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
       setDocxVersion((v) => v + 1); // picu render tampilan asli via effect
 
       if (docxResult.embeddedImages && docxResult.embeddedImages.length > 0) {
+        let _added = 0;
         docxResult.embeddedImages.forEach((img, idx) => {
+          if (mediaExistsByDataUrl(img.dataUrl)) return; // cegah duplikat
+          _added++;
           saveMediaItem({
             id: 'med_docx_' + Date.now() + '_' + idx,
             name: `${file.name.replace(/\.docx$/i, '')}_${img.name}`,
@@ -1003,7 +1027,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
           });
         });
         setMediaList(getStoredMedia());
-        triggerNotice(`Naskah dan ${docxResult.embeddedImages.length} gambar diperbarui dari "${file.name}"!`);
+        triggerNotice(`Naskah diperbarui dari "${file.name}"!` + (_added > 0 ? ` ${_added} gambar baru disimpan ke Pustaka Media.` : ` Gambar sudah ada di Pustaka Media (tidak diduplikasi).`));
       } else {
         triggerNotice(`Naskah diperbarui dari "${file.name}" sesuai format aslinya!`);
       }

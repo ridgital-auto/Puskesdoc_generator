@@ -395,6 +395,33 @@ export function saveMediaItem(item: MediaItem): void {
   notifyDataChanged();
 }
 
+export function mediaExistsByDataUrl(dataUrl: string): boolean {
+  try {
+    return getStoredMedia().some((m) => m.dataUrl === dataUrl);
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Hapus item dengan dataUrl ganda (simpan kemunculan pertama). Kembalikan jumlah yang dihapus. */
+export function removeDuplicateMedia(): number {
+  const list = getStoredMedia();
+  const seen = new Set<string>();
+  const deduped: typeof list = [];
+  for (const m of list) {
+    const key = m.dataUrl ? `url:${m.dataUrl}` : `id:${m.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(m);
+  }
+  const removed = list.length - deduped.length;
+  if (removed > 0) {
+    localStorage.setItem(MEDIA_KEY, JSON.stringify(deduped));
+    notifyDataChanged();
+  }
+  return removed;
+}
+
 export function deleteMediaItem(itemId: string): void {
   const list = getStoredMedia().filter((m) => m.id !== itemId);
   localStorage.setItem(MEDIA_KEY, JSON.stringify(list));
