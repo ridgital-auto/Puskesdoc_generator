@@ -44,40 +44,45 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ isOpen, onClose })
   const topics: TutorialTopic[] = [
     {
       id: 'login_sync',
-      title: '1. Login Akun & Sinkronisasi Cadangan Google Drive',
+      title: '1. Google Drive, Cadangan & Sinkronisasi',
       category: 'Akun & Cadangan',
       icon: Cloud,
-      summary: 'Cara masuk dengan email faskes dan sinkronisasi otomatis dengan cadangan data di Google Drive.',
+      summary: 'Cara menautkan Google Drive (pakai OAuth Client ID sendiri) dan mencadangkan data.',
       content: {
         steps: [
-          'Klik tombol Akun / Email di pojok kanan atas bilah navigasi aplikasi.',
-          'Masukkan alamat email resmi Puskesmas (misal: mutupuskesmasbabakan@gmail.com) atau gunakan tombol "Masuk dengan Google".',
-          'Setelah login, PuskesmasDoc otomatis memeriksa berkas cadangan (puskesdoc_backup_*.json) di Google Drive akun yang terhubung.',
-          'Jika ditemukan cadangan terbaru, sistem otomatis menyinkronkan profil faskes, database indikator, variabel, dan template dokumen.',
-          'Anda juga dapat melakukan Cadangan Manual (Unduh Berkas JSON) kapan saja melalui menu Akun & Cadangan.',
+          'Klik tombol "Backup & GDrive" (ikon awan) di bilah navigasi atas, buka tab "Google Drive".',
+          'Ikuti panduan 10 langkah di tab tersebut untuk membuat OAuth Client ID milikmu sendiri di console.cloud.google.com (cukup sekali).',
+          'Tempel Client ID di kolom yang tersedia lalu klik "Simpan Client ID".',
+          'Klik "Hubungkan Google Drive" lalu izinkan akses pada popup Google.',
+          'Setelah terhubung, gunakan "Cadangkan ke Drive" untuk menyimpan seluruh data (profil, variabel, dokumen, template, database, termasuk API key) ke folder "Akreditasi Puskesmas ILP 2026".',
+          'Aktifkan "Auto-Sync" agar cadangan diperbarui otomatis setiap ada perubahan data.',
+          'Untuk memulihkan di perangkat lain: hubungkan Drive di perangkat baru lalu klik "Sinkronkan dari Drive", atau pulihkan file .json via tab "Backup & Restore".',
         ],
         tips: [
-          'Pencadangan berbasis Google Drive memastikan seluruh dokumen, capaian, dan konfigurasi faskes tetap aman dan dapat diakses dari komputer mana pun.',
+          'Pencadangan berbasis Google Drive memastikan seluruh dokumen, capaian, dan konfigurasi faskes tetap aman dan dapat diakses dari perangkat mana pun.',
           'Data lokal tersimpan aman di browser Anda saat offline dan tersinkronisasi saat terhubung internet.',
         ],
       },
     },
     {
       id: 'agent_ai',
-      title: '2. Pemilihan AI Agent Generator (Gemini Bawaan vs Custom AI)',
+      title: '2. Pemilihan AI Agent Generator (Gemini 3.8 Flash vs Custom AI)',
       category: 'Kecerdasan Buatan (AI)',
       icon: Bot,
-      summary: 'Memilih agent kecerdasan buatan: Google Gemini bawaan yang otomatis terhubung akun Gmail, atau Custom AI pihak ketiga.',
+      summary: 'AI memakai API key Gemini milikmu sendiri (model Gemini 3.8 Flash), atau Custom AI pihak ketiga bila diaktifkan.',
       content: {
         steps: [
+          'Agar AI bisa dipakai, isi dulu API Key Gemini: klik tombol "Backup & GDrive" (ikon awan) → tab "AI Agent" → tempel API key → Simpan.',
+          'API key gratis bisa dibuat di https://aistudio.google.com/apikey. Key hanya tersimpan di browser ini.',
           'Pada Panel Generator di atas tombol Generate, perhatikan bagian "Pilihan AI Agent".',
-          'Pilihan Default adalah "Google Gemini 2.5 Flash", yang langsung aktif dan tertaut dengan akun Google faskes Anda tanpa perlu pengaturan tambahan.',
+          'Pilihan Default adalah "Google Gemini 3.8 Flash (API Key Pribadi)" yang memakai key milikmu sendiri.',
           'Jika Puskesmas memiliki langganan API sendiri (seperti OpenAI GPT-4o, DeepSeek, atau proxy internal), pilih opsi "Custom AI / OpenAI Compatible".',
           'Isi Base URL / Endpoint, API Key, dan nama model yang diinginkan, kemudian klik "Simpan Pengaturan Agent".',
           'Agent terpilih akan digunakan untuk memproses penyusunan naskah dinas, formulasi regulasi, dan analisis capaian.',
         ],
         tips: [
-          'Google Gemini 2.5 Flash memiliki kecepatan respons tinggi dan telah dioptimalkan secara mendalam dengan pemahaman regulasi Kemenkes RI (PMK No. 43/2019, PMK No. 17/2023, & Juknis ILP 2024-2026).',
+          'Google Gemini 3.8 Flash memiliki kecepatan respons tinggi dan telah dioptimalkan secara mendalam dengan pemahaman regulasi Kemenkes RI (UU Kesehatan No 17/2023, PMK No. 43/2019, & Juknis ILP).',
+          'Ganti perangkat? Unduh cadangan JSON (tab Backup) lalu pulihkan di perangkat baru — API key ikut terbawa.',
         ],
         examples: [
           'Endpoint OpenAI: https://api.openai.com/v1/chat/completions',

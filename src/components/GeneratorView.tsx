@@ -2220,6 +2220,12 @@ Catatan: ${item.notes || '-'}
         onNotify={(msg) => triggerNotice(msg)}
       />
 
+      {/* MODAL TUTORIAL PENGGUNAAN */}
+      <TutorialModal
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+      />
+
       {/* MODAL RIWAYAT DOKUMEN GENERATE */}
       {isDocHistoryModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
