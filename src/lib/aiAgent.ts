@@ -70,11 +70,26 @@ function cleanJsonFences(text: string): string {
 }
 
 function tryParseJson(text: string): any | null {
+  const cleaned = cleanJsonFences(text);
+  // Coba langsung dulu (kasus ideal: JSON murni seperti dari Gemini)
   try {
-    return JSON.parse(cleanJsonFences(text));
+    return JSON.parse(cleaned);
   } catch {
-    return null;
+    /* lanjut ke ekstraksi */
   }
+  // Model gratis (mis. Pollinations) sering menambahkan teks pembuka/penutup
+  // di sekitar JSON ("Berikut hasilnya: {...} semoga membantu").
+  // Ambil potongan dari '{' pertama sampai '}' terakhir lalu parse.
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /** Panggil endpoint OpenAI-compatible milik pengguna (Custom AI Agent). */
@@ -191,6 +206,7 @@ ${bracketPromptList}
 ${JSON.stringify(p.variables || {}, null, 2)}
 
 Format respon yang diharapkan:
+PENTING: Jawab HANYA dengan JSON valid — tanpa kalimat pembuka, tanpa penjelasan, tanpa teks penutup. Langsung mulai dari karakter { dan akhiri di }.
 Kembalikan respon JSON murni (JSON parsable) dengan struktur:
 {
   "title": "${docTitle}",
@@ -423,6 +439,7 @@ ${p.currentData ? `DATA DRAFT SAAT INI (YANG INGIN DISEMPURNAKAN):\n${JSON.strin
 ${p.customPrompt ? `INSTRUKSI KHUSUS / PERINTAH PROMPT PENGGUNA:\n"${p.customPrompt}"\nPerhatikan instruksi di atas secara saksama dalam menyusun judul, kategori, metrik, maupun rekomendasi!\n` : ''}
 
 Format respon yang diharapkan:
+PENTING: Jawab HANYA dengan JSON valid — tanpa kalimat pembuka, tanpa penjelasan, tanpa teks penutup. Langsung mulai dari karakter { dan akhiri di }.
 Kembalikan respon JSON murni (JSON parsable) dengan struktur:
 {
   "title": "Judul Laporan / Data Capaian (misal: Capaian SPM Kesehatan Ibu dan Anak 2025)",
