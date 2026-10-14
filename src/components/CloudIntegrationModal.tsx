@@ -213,6 +213,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
   const handleLogout = async () => {
     await googleLogout();
     logoutUserAccount();
+    clearDriveToken();
     setUserAccount({ email: '', isLoggedIn: false });
     setAccessToken(null);
     setDriveFiles([]);

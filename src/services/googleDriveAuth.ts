@@ -63,6 +63,8 @@ function ensureTokenClient(): void {
   }
 }
 
+let lastTokenError: string | null = null;
+
 function requestToken(promptMode: '' | 'consent'): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -75,8 +77,10 @@ function requestToken(promptMode: '' | 'consent'): Promise<string | null> {
       if (resp && resp.access_token) {
         cachedToken = resp.access_token;
         tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000 - 60_000;
+        lastTokenError = null;
         done(cachedToken);
       } else {
+        lastTokenError = (resp && resp.error) || 'unknown';
         done(null);
       }
     };
@@ -113,6 +117,12 @@ export async function connectDriveInteractive(): Promise<string> {
   ensureTokenClient();
   const token = await requestToken('consent');
   if (!token) {
+    if (lastTokenError === 'access_denied') {
+      throw new Error(
+        'Google menolak email ini (Error 403). Penyebab umum: aplikasi masih mode "Testing" dan email ini belum didaftarkan sebagai Test user. ' +
+        'Solusi: di Google Cloud Console → OAuth consent screen → Audience → tambahkan email ini sebagai Test user, atau klik "Publish app".'
+      );
+    }
     throw new Error('Koneksi Google Drive dibatalkan atau ditolak. Coba lagi dan klik "Izinkan" pada popup Google.');
   }
   return token;
