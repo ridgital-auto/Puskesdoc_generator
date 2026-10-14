@@ -29,6 +29,7 @@ import { PuskesmasDatabaseItem, DatabaseCategory, DatabaseMetric, IlpKlaster, Me
 import { getStoredDatabase, saveDatabaseItem, deleteDatabaseItem, resetDatabaseToDefault, getStoredMedia, getStoredAgentConfig } from '../utils/storage';
 import { ILP_KLASTERS } from '../utils/constants';
 import { extractTextFromDocx } from '../utils/docxReader';
+import { aiAnalyzeDatabaseDocument } from '../lib/aiAgent';
 
 interface DatabasePuskesmasViewProps {
   onSelectForGenerator?: (item: PuskesmasDatabaseItem) => void;
@@ -247,17 +248,12 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
     const agentConfig = getStoredAgentConfig();
 
     try {
-      const res = await fetch('/api/ai-analyze-database-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          documentText: aiDocText,
-          customPrompt: aiExtractPrompt.trim() || undefined,
-          customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
-        }),
+      const json = await aiAnalyzeDatabaseDocument({
+        documentText: aiDocText,
+        customPrompt: aiExtractPrompt.trim() || undefined,
+        customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
       });
 
-      const json = await res.json();
       if (json.success && json.data) {
         const d = json.data;
         if (d.title) setFormTitle(d.title);
@@ -303,18 +299,13 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
         notes: formNotes,
       };
 
-      const res = await fetch('/api/ai-analyze-database-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          documentText: aiDocText || undefined,
-          customPrompt: `Perbaiki data berikut sesuai perintah ini: "${aiEditPrompt.trim()}". Perhatikan akurasi nama metrik, angka, status, dan rekomendasi.`,
-          currentData: currentDataSnapshot,
-          customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
-        }),
+      const json = await aiAnalyzeDatabaseDocument({
+        documentText: aiDocText || undefined,
+        customPrompt: `Perbaiki data berikut sesuai perintah ini: "${aiEditPrompt.trim()}". Perhatikan akurasi nama metrik, angka, status, dan rekomendasi.`,
+        currentData: currentDataSnapshot,
+        customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
       });
 
-      const json = await res.json();
       if (json.success && json.data) {
         const d = json.data;
         if (d.title) setFormTitle(d.title);

@@ -14,7 +14,8 @@ import {
   LogIn,
   LogOut,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  KeyRound
 } from 'lucide-react';
 import { 
   getStoredGDriveSettings, 
@@ -22,6 +23,8 @@ import {
   GDriveSettings, 
   getStoredAgentConfig, 
   saveAgentConfig, 
+  getGeminiApiKey,
+  saveGeminiApiKey,
   exportBackupJSON, 
   importBackupJSON,
   getStoredUserAccount,
@@ -78,6 +81,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
   // Agent state
   const [testStatus, setTestStatus] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [geminiKey, setGeminiKey] = useState(getGeminiApiKey());
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
 
   useEffect(() => {
@@ -622,6 +626,53 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
           {/* SubTab 3: Custom AI Agent */}
           {activeSubTab === 'agent' && (
             <div className="space-y-4">
+              {/* API Key Gemini Pribadi — wajib untuk link preview / GitHub Pages */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-800">API Key Gemini Pribadi (Gemini 3.8 Flash)</span>
+                    <p className="text-[11px] text-slate-500">
+                      Wajib diisi agar AI bisa dipakai di link preview. Key hanya tersimpan di browser ini.
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    API Key Gemini
+                  </label>
+                  <input
+                    type="password"
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    placeholder="AIza..."
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-semibold text-sky-700 hover:underline"
+                  >
+                    Buat API key gratis di Google AI Studio →
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      saveGeminiApiKey(geminiKey);
+                      triggerNotice(geminiKey.trim() ? 'API Key Gemini berhasil disimpan!' : 'API Key Gemini dikosongkan.');
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm cursor-pointer"
+                  >
+                    Simpan API Key
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between p-3.5 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center">
@@ -735,7 +786,7 @@ export const CloudIntegrationModal: React.FC<CloudIntegrationModalProps> = ({
 
               {!agentConfig.enabled && (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-800">Mode Default Aktif:</span> Aplikasi saat ini menggunakan model resmi <strong className="text-purple-700">Google Gemini 3.8 Flash</strong> yang terintegrasi langsung di backend secara otomatis dan cepat tanpa perlu konfigurasi tambahan.
+                  <span className="font-semibold text-slate-800">Mode Default Aktif:</span> Aplikasi menggunakan model resmi <strong className="text-purple-700">Google Gemini 3.8 Flash</strong> dengan API key pribadimu di atas — pemakaian tercatat di akun Google AI Studio milikmu.
                 </div>
               )}
             </div>

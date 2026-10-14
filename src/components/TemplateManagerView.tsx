@@ -55,6 +55,7 @@ import {
   getStoredVariables
 } from '../utils/storage';
 import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
+import { aiExecuteBracketPrompt } from '../lib/aiAgent';
 
 interface TemplateManagerViewProps {
   onApplyTemplateToGenerator: (template: DocumentTemplate) => void;
@@ -252,22 +253,17 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     setExecutingBracketIdx(sectionIdx);
 
     try {
-      const res = await fetch('/api/execute-bracket-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sectionTitle: sec.title,
-          sectionContent: sec.content,
-          docType: editingTemplate.docType,
-          docTitle: editingTemplate.name,
-          variables: variables.reduce((acc: any, v) => {
-            acc[v.key] = v.value;
-            return acc;
-          }, {}),
-        }),
+      const json = await aiExecuteBracketPrompt({
+        sectionTitle: sec.title,
+        sectionContent: sec.content,
+        docType: editingTemplate.docType,
+        docTitle: editingTemplate.name,
+        variables: variables.reduce((acc: any, v) => {
+          acc[v.key] = v.value;
+          return acc;
+        }, {}),
       });
 
-      const json = await res.json();
       if (json.success && json.updatedContent) {
         const updated = [...editingTemplate.sections];
         updated[sectionIdx] = { ...sec, content: json.updatedContent };

@@ -7,6 +7,7 @@ const DOCUMENTS_KEY = 'puskesdoc_saved_docs';
 const CANVAS_TEMPLATES_KEY = 'puskesdoc_canvas_templates';
 const DOCUMENT_TEMPLATES_KEY = 'puskesdoc_document_templates';
 const AGENT_CONFIG_KEY = 'puskesdoc_custom_agent_config';
+const GEMINI_API_KEY_KEY = 'puskesdoc_gemini_api_key';
 const CUSTOM_TYPES_KEY = 'puskesdoc_custom_doc_types';
 const GDRIVE_SETTINGS_KEY = 'puskesdoc_gdrive_settings';
 const MEDIA_KEY = 'puskesdoc_media_library_items';
@@ -138,6 +139,20 @@ export function getStoredAgentConfig(): CustomAgentConfig {
 
 export function saveAgentConfig(config: CustomAgentConfig): void {
   localStorage.setItem(AGENT_CONFIG_KEY, JSON.stringify(config));
+}
+
+/** API Key Gemini milik pengguna — hanya tersimpan di browser ini. */
+export function getGeminiApiKey(): string {
+  try {
+    return localStorage.getItem(GEMINI_API_KEY_KEY) || '';
+  } catch (e) {
+    console.error('Failed reading gemini api key from localStorage', e);
+    return '';
+  }
+}
+
+export function saveGeminiApiKey(key: string): void {
+  localStorage.setItem(GEMINI_API_KEY_KEY, (key || '').trim());
 }
 
 export function getStoredCustomTypes(): CustomDocTypeDefinition[] {

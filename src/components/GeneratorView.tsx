@@ -62,6 +62,7 @@ import {
 } from '../utils/storage';
 import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
+import { aiGenerateDocument, aiExecuteBracketPrompt } from '../lib/aiAgent';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
 
@@ -594,7 +595,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         const next = prev + inc;
         if (next < 30) setProgressStepText('Menyiapkan prompt naskah & variabel faskes...');
         else if (next < 60) setProgressStepText('Menganalisis regulasi Kemenkes & indikator ILP...');
-        else if (next < 85) setProgressStepText(`Menyusun naskah via ${selectedAgent === 'gemini' ? 'Google Gemini 2.5 Flash' : 'Custom AI'}...`);
+        else if (next < 85) setProgressStepText(`Menyusun naskah via ${selectedAgent === 'gemini' ? 'Google Gemini 3.8 Flash' : 'Custom AI'}...`);
         else setProgressStepText('Memformat bab, pasal, dan tabel akreditasi...');
         return next;
       });
@@ -603,27 +604,22 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     try {
       const activeCustomAgent = selectedAgent === 'custom' && customAgentState.enabled && customAgentState.apiKey ? customAgentState : undefined;
 
-      const res = await fetch('/api/generate-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const json = await aiGenerateDocument({
+        docType: activeDoc.docType === 'CUSTOM' ? (activeDoc.customTypeName || 'Custom') : activeDoc.docType,
+        klaster: activeKlasterInfo.name,
+        title: activeDoc.title,
+        context: activeTab.contextInput,
+        customInstructions: activeTab.customInstructions,
+        targetPages: targetP,
+        selectedDatabaseItems: selectedDatabaseItems,
+        variables: variables.reduce((acc: any, item) => {
+          acc[item.key] = item.value;
+          return acc;
+        }, {}),
+        customAgentConfig: activeCustomAgent,
         signal: abortControllerRef.current.signal,
-        body: JSON.stringify({
-          docType: activeDoc.docType === 'CUSTOM' ? (activeDoc.customTypeName || 'Custom') : activeDoc.docType,
-          klaster: activeKlasterInfo.name,
-          title: activeDoc.title,
-          context: activeTab.contextInput,
-          customInstructions: activeTab.customInstructions,
-          targetPages: targetP,
-          selectedDatabaseItems: selectedDatabaseItems,
-          variables: variables.reduce((acc: any, item) => {
-            acc[item.key] = item.value;
-            return acc;
-          }, {}),
-          customAgentConfig: activeCustomAgent,
-        }),
       });
 
-      const json = await res.json();
       if (json.success && json.data) {
         setProgressPercent(100);
         setProgressStepText('Selesai! Membuka pratinjau...');
@@ -699,26 +695,22 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     const agentConfig = getStoredAgentConfig();
 
     try {
-      const res = await fetch('/api/execute-bracket-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sectionTitle: sec.title,
-          content: sec.content,
-          docType: activeDoc.docType,
-          variables: variables.reduce((acc: any, item) => {
-            acc[item.key] = item.value;
-            return acc;
-          }, {}),
-          selectedDatabaseItems: selectedDatabaseItems,
-          customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
-        }),
+      const json = await aiExecuteBracketPrompt({
+        sectionTitle: sec.title,
+        sectionContent: sec.content,
+        docType: activeDoc.docType,
+        docTitle: activeDoc.title,
+        variables: variables.reduce((acc: any, item) => {
+          acc[item.key] = item.value;
+          return acc;
+        }, {}),
+        selectedDatabaseItems: selectedDatabaseItems,
+        customAgentConfig: agentConfig.enabled ? agentConfig : undefined,
       });
 
-      const json = await res.json();
-      if (json.success && json.content) {
+      if (json.success && json.updatedContent) {
         const updated = [...activeDoc.sections];
-        updated[globalIdx] = { ...sec, content: json.content };
+        updated[globalIdx] = { ...sec, content: json.updatedContent };
         updateActiveTab({}, { ...activeDoc, sections: updated });
         triggerNotice(`Perintah [...] pada "${sec.title}" berhasil dieksekusi via AI!`);
       } else {
