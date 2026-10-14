@@ -854,7 +854,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
 
   // Reset to Defaults
   const handleResetToDefaults = () => {
-    const confirmed = window.confirm('Kembalikan seluruh daftar template ke standar baku Kemenkes? Template kustom Anda akan ter-reset.');
+    const confirmed = window.confirm('Kosongkan seluruh daftar template? Semua template akan dihapus.');
     if (!confirmed) return;
 
     resetDocumentTemplates();

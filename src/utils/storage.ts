@@ -109,12 +109,12 @@ export function getStoredDocumentTemplates(): DocumentTemplate[] {
     const raw = localStorage.getItem(DOCUMENT_TEMPLATES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
     console.error('Failed reading document templates from localStorage', e);
   }
-  return DEFAULT_DOCUMENT_TEMPLATES;
+  return [];
 }
 
 export function saveDocumentTemplate(template: DocumentTemplate): void {
@@ -135,7 +135,7 @@ export function deleteDocumentTemplate(templateId: string): void {
 }
 
 export function resetDocumentTemplates(): void {
-  localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(DEFAULT_DOCUMENT_TEMPLATES));
+  localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify([]));
 }
 
 export function getStoredAgentConfig(): CustomAgentConfig {
@@ -359,8 +359,8 @@ export function saveAllDatabase(items: PuskesmasDatabaseItem[]): void {
 }
 
 export function resetDatabaseToDefault(): PuskesmasDatabaseItem[] {
-  localStorage.setItem(DATABASE_KEY, JSON.stringify(INITIAL_DATABASE_ITEMS));
-  return INITIAL_DATABASE_ITEMS;
+  localStorage.setItem(DATABASE_KEY, JSON.stringify([]));
+  return [];
 }
 
 // Utility: Replace {{variable_key}} with stored variable values

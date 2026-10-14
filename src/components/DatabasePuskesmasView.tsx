@@ -487,7 +487,7 @@ export const DatabasePuskesmasView: React.FC<DatabasePuskesmasViewProps> = ({
 
   // Reset to default
   const handleResetDefault = () => {
-    if (window.confirm('Reset database ke data capaian standar Puskesmas ILP bawaan (1 contoh standar)? Data kustom akan ditimpa.')) {
+    if (window.confirm('Kosongkan seluruh database? Semua data akan dihapus.')) {
       const def = resetDatabaseToDefault();
       setDatabaseList(def);
       triggerNotice('Database Puskesmas berhasil direset ke standar ILP (1 data contoh)!');
