@@ -26,6 +26,9 @@ import {
   ImageRun,
   BorderStyle,
   TableLayoutType,
+  VerticalMergeType,
+  Header,
+  Footer,
 } from 'docx';
 import type { PuskesDoc } from '../types';
 import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
@@ -232,11 +235,41 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
   const diff = widthDxa - colDxa.reduce((a, b) => a + b, 0);
   colDxa[colDxa.length - 1] = Math.max(1, colDxa[colDxa.length - 1] + diff);
 
+  // Grid okupansi: untuk tiap kolom, berapa baris lagi tertutup oleh rowspan
+  // dari sel di baris sebelumnya → diisi sel CONTINUE agar kolom tetap sejajar.
+  const rowSpanRemain: number[] = new Array(colCount).fill(0);
+
   const rows: TableRow[] = rowEls.map((tr) => {
     const cells: TableCell[] = [];
+    const tdEls = Array.from(tr.cells) as HTMLTableCellElement[];
+    let tdIdx = 0;
     let colIdx = 0;
-    Array.from(tr.cells).forEach((cellNode) => {
-      const td = cellNode as HTMLTableCellElement;
+    while (colIdx < colCount) {
+      // Kolom ini masih tertutup merge vertikal dari baris atas
+      if (rowSpanRemain[colIdx] > 0) {
+        cells.push(
+          new TableCell({
+            children: [new Paragraph({})],
+            verticalMerge: VerticalMergeType.CONTINUE,
+            width: { size: colDxa[colIdx], type: WidthType.DXA },
+          })
+        );
+        rowSpanRemain[colIdx]--;
+        colIdx++;
+        continue;
+      }
+      const td = tdEls[tdIdx++];
+      if (!td) {
+        // Baris HTML lebih pendek dari grid → sel kosong
+        cells.push(
+          new TableCell({
+            children: [new Paragraph({})],
+            width: { size: colDxa[colIdx], type: WidthType.DXA },
+          })
+        );
+        colIdx++;
+        continue;
+      }
       const colSpan = td.colSpan > 1 ? td.colSpan : 1;
       const rowSpan = td.rowSpan > 1 ? td.rowSpan : 1;
       let cellDxa = 0;
@@ -256,8 +289,13 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
           shading: bg ? { fill: bg } : undefined,
         })
       );
+      if (rowSpan > 1) {
+        for (let k = 0; k < colSpan && colIdx + k < colCount; k++) {
+          rowSpanRemain[colIdx + k] = rowSpan - 1;
+        }
+      }
       colIdx += colSpan;
-    });
+    }
     return new TableRow({ children: cells });
   });
 
@@ -400,11 +438,43 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   // Lebar area konten (twips) = lebar kertas − margin kiri/kanan → tabel pas di halaman
   const contentDxa = Math.max(1000, width - cmToTwips(mg.left) - cmToTwips(mg.right));
   const children: Array<Paragraph | Table> = [];
-  convertBlockChildren(root, children, imgMap, {}, contentDxa);
+
+  // docx-preview: 1 <section class="docx"> = 1 halaman Word.
+  // - <header>/<footer> di tiap halaman = header/footer Word asli → jadikan header/footer
+  //   Word betulan (bukan isi body), ambil dari halaman pertama saja.
+  // - Batas antar-halaman dipertahankan (page break) agar pagination mengikuti aslinya:
+  //   tidak muat 1 halaman → jadi 2 halaman, sesuai kebutuhan.
+  const pageSections = Array.from(root.querySelectorAll('section.docx')) as HTMLElement[];
+  let headerPart: Header | undefined;
+  let footerPart: Footer | undefined;
+  if (pageSections.length > 0) {
+    const firstHdr = pageSections[0].querySelector('header');
+    if (firstHdr) {
+      const hdrChildren: Array<Paragraph | Table> = [];
+      convertBlockChildren(firstHdr, hdrChildren, imgMap, {}, contentDxa);
+      if (hdrChildren.length > 0) headerPart = new Header({ children: hdrChildren });
+    }
+    const firstFtr = pageSections[0].querySelector('footer');
+    if (firstFtr) {
+      const ftrChildren: Array<Paragraph | Table> = [];
+      convertBlockChildren(firstFtr, ftrChildren, imgMap, {}, contentDxa);
+      if (ftrChildren.length > 0) footerPart = new Footer({ children: ftrChildren });
+    }
+    // Hapus semua header/footer dari alur body (sudah jadi header/footer Word)
+    root.querySelectorAll('header, footer').forEach((el) => el.remove());
+    pageSections.forEach((sec, i) => {
+      if (i > 0) children.push(new Paragraph({ pageBreakBefore: true }));
+      convertBlockChildren(sec, children, imgMap, {}, contentDxa);
+    });
+  } else {
+    convertBlockChildren(root, children, imgMap, {}, contentDxa);
+  }
   if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
   return new Document({
     sections: [
       {
+        headers: headerPart ? { default: headerPart } : undefined,
+        footers: footerPart ? { default: footerPart } : undefined,
         properties: {
           page: {
             size: { width, height },

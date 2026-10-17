@@ -1,13 +1,16 @@
 /**
- * tableColumnResize.ts — Kolom tabel bisa ditarik (resize) seperti MS Word.
+ * tableColumnResize.ts — Kolom tabel bisa ditarik (resize) seperti MS Word,
+ * plus tinggi baris bisa ditarik atas-bawah.
  *
  * Cara pakai: panggil `setupTableColumnResize(container)` setiap kali HTML
  * dokumen selesai dirender di dalam `container` (contentEditable).
  * - Setiap tabel diberi <colgroup> dengan lebar kolom eksplisit (px).
  * - Arahkan kursor ke garis batas kanan sel → kursor berubah jadi col-resize.
- * - Tekan & tarik garis batas untuk mengubah lebar dua kolom yang bersebelahan.
- * - Perubahan tersimpan otomatis karena colgroup adalah bagian dari innerHTML
- *   yang dibaca saat menyimpan dokumen.
+ *   Tekan & tarik untuk mengubah lebar dua kolom yang bersebelahan.
+ * - Arahkan kursor ke garis batas bawah sel → kursor berubah jadi row-resize.
+ *   Tekan & tarik untuk mengubah tinggi baris.
+ * - Perubahan tersimpan otomatis karena colgroup & tinggi baris adalah bagian
+ *   dari innerHTML yang dibaca saat menyimpan dokumen.
  *
  * Aman dipanggil berulang: tabel yang sudah diproses ditandai data-tcr="1".
  */
@@ -62,6 +65,13 @@ interface DragState {
   w2: number;
 }
 
+interface RowDragState {
+  table: HTMLTableElement;
+  row: HTMLTableRowElement;
+  startY: number;
+  h: number;
+}
+
 function getCols(table: HTMLTableElement): HTMLElement[] {
   const cg = table.querySelector('colgroup');
   if (!cg) return [];
@@ -84,6 +94,7 @@ export function setupTableColumnResize(container: HTMLElement): void {
   (container as any).__tcrBound = true;
 
   let drag: DragState | null = null;
+  let rowDrag: RowDragState | null = null;
 
   const findBorderCell = (e: MouseEvent): { table: HTMLTableElement; cell: HTMLTableCellElement } | null => {
     const cell = (e.target as HTMLElement).closest('td, th') as HTMLTableCellElement | null;
@@ -95,6 +106,19 @@ export function setupTableColumnResize(container: HTMLElement): void {
     const row = cell.parentElement as HTMLTableRowElement | null;
     if (!row || cell.cellIndex >= row.cells.length - 1) return null;
     return { table, cell };
+  };
+
+  /** Garis batas bawah sel → tarik untuk ubah tinggi baris. */
+  const findBorderRow = (e: MouseEvent): { table: HTMLTableElement; row: HTMLTableRowElement } | null => {
+    const cell = (e.target as HTMLElement).closest('td, th') as HTMLTableCellElement | null;
+    if (!cell) return null;
+    const table = cell.closest('table') as HTMLTableElement | null;
+    if (!table || !container.contains(table)) return null;
+    const r = cell.getBoundingClientRect();
+    if (Math.abs(e.clientY - r.bottom) > GRAB_ZONE) return null;
+    const row = cell.parentElement as HTMLTableRowElement | null;
+    if (!row) return null;
+    return { table, row };
   };
 
   container.addEventListener('mousemove', (e) => {
@@ -111,33 +135,55 @@ export function setupTableColumnResize(container: HTMLElement): void {
       e.preventDefault();
       return;
     }
-    const hit = findBorderCell(e);
-    (container as HTMLElement).style.cursor = hit ? 'col-resize' : '';
+    if (rowDrag) {
+      const dy = e.clientY - rowDrag.startY;
+      rowDrag.row.style.height = `${Math.max(20, Math.round(rowDrag.h + dy))}px`;
+      e.preventDefault();
+      return;
+    }
+    const hitCol = findBorderCell(e);
+    const hitRow = hitCol ? null : findBorderRow(e);
+    (container as HTMLElement).style.cursor = hitCol ? 'col-resize' : hitRow ? 'row-resize' : '';
   });
 
   container.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const hit = findBorderCell(e);
-    if (!hit) return;
-    ensureColgroup(hit.table);
-    const cols = getCols(hit.table);
-    const c1 = cols[hit.cell.cellIndex];
-    const c2 = cols[hit.cell.cellIndex + 1];
-    if (!c1 || !c2) return;
-    drag = {
-      table: hit.table,
-      colIdx: hit.cell.cellIndex,
-      startX: e.clientX,
-      w1: colWidthPx(c1),
-      w2: colWidthPx(c2),
-    };
-    // Jangan letakkan kursor teks / seleksi saat menarik garis kolom
-    e.preventDefault();
-    e.stopPropagation();
+    if (hit) {
+      ensureColgroup(hit.table);
+      const cols = getCols(hit.table);
+      const c1 = cols[hit.cell.cellIndex];
+      const c2 = cols[hit.cell.cellIndex + 1];
+      if (!c1 || !c2) return;
+      drag = {
+        table: hit.table,
+        colIdx: hit.cell.cellIndex,
+        startX: e.clientX,
+        w1: colWidthPx(c1),
+        w2: colWidthPx(c2),
+      };
+      // Jangan letakkan kursor teks / seleksi saat menarik garis kolom
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const hitR = findBorderRow(e);
+    if (hitR) {
+      ensureColgroup(hitR.table);
+      rowDrag = {
+        table: hitR.table,
+        row: hitR.row,
+        startY: e.clientY,
+        h: hitR.row.offsetHeight || 30,
+      };
+      e.preventDefault();
+      e.stopPropagation();
+    }
   });
 
   window.addEventListener('mouseup', () => {
     drag = null;
+    rowDrag = null;
   });
 
   // Proses tabel yang sudah ada sekarang

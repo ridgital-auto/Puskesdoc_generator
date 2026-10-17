@@ -27,6 +27,7 @@ import {
   Bold,
   Italic,
   Underline,
+  Type,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -1988,6 +1989,21 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                     >
                       <Underline className="w-3.5 h-3.5" />
                     </button>
+                    <label
+                      className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-300 transition-colors cursor-pointer flex items-center"
+                      title="Warna Font — pilih teks dulu lalu klik untuk ganti warna"
+                    >
+                      <span className="relative flex items-center">
+                        <Type className="w-3.5 h-3.5" />
+                        <span className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-sm bg-red-600" />
+                      </span>
+                      <input
+                        type="color"
+                        defaultValue="#ff0000"
+                        className="absolute opacity-0 w-0 h-0"
+                        onChange={(e) => execFormat('foreColor', e.target.value)}
+                      />
+                    </label>
 
                     <span className="h-4 border-r border-slate-300 mx-1" />
 

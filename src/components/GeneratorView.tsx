@@ -164,6 +164,24 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const genImgTargetSection = useRef<number>(0);
   // Kolom tabel (dokumen Word) bisa ditarik di lembar kerja
   const genDocxRef = useRef<HTMLDivElement | null>(null);
+  // Kursor editor: ketikan TIDAK boleh memicu setState — React akan me-reset
+  // innerHTML dan kursor loncat/hilang (terutama saat Delete/Backspace).
+  // HTML hidup di DOM; di-commit ke state hanya saat blur. Pembaca (pratinjau,
+  // unduh, generate) memakai getLiveDocxHtml() agar selalu dapat versi terbaru.
+  /** HTML terkini dari editor naskah Word (lebih segar dari state saat mengetik). */
+  const getLiveDocxHtml = (): string | undefined => {
+    if (genDocxRef.current && activeDoc.originalDocxHtml !== undefined) {
+      return genDocxRef.current.innerHTML;
+    }
+    return activeDoc.originalDocxHtml;
+  };
+  const commitDocxHtml = () => {
+    if (!genDocxRef.current) return;
+    const html = genDocxRef.current.innerHTML;
+    if (html !== activeDoc.originalDocxHtml) {
+      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html });
+    }
+  };
   // Zoom kertas generator (auto-fit seperti MS Word)
   const genZoomAreaRef = useRef<HTMLDivElement | null>(null);
   const genZoomScaleRef = useRef<number>(1);
@@ -1018,12 +1036,14 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
       // MODE ISI-TEMPLATE: dokumen Word yang mengandung penanda [...] → AI HANYA mengisi
       // bagian bertanda itu, struktur/tabel/format template tidak diubah sama sekali.
-      if (activeDoc.originalDocxHtml && activeDoc.originalDocxHtml.includes('[')) {
+      // Pakai HTML live dari editor (lebih segar dari state bila pengguna baru mengetik).
+      const liveDocxHtml = getLiveDocxHtml();
+      if (liveDocxHtml && liveDocxHtml.includes('[')) {
         const varMapFill: Record<string, any> = variables.reduce((acc: any, item) => {
           acc[item.key] = item.value;
           return acc;
         }, {});
-        const prep = prepareTemplateForFill(activeDoc.originalDocxHtml, varMapFill);
+        const prep = prepareTemplateForFill(liveDocxHtml, varMapFill);
         if (prep && prep.markers.length > 0) {
           setProgressStepText(`Mengisi ${prep.markers.length} bagian bertanda [...] via ${selectedAgentId === 'gemini' ? 'Gemini' : (selectedCustomAgent?.name || 'Custom AI')}...`);
           const fillRes = await aiFillTemplateBrackets({
@@ -1056,10 +1076,11 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
       // Susun panduan struktur template agar hasil generate MENGIKUTI template pengguna
       let templateStructure = '';
-      if (activeDoc.originalDocxHtml) {
+      const liveHtmlForGuide = getLiveDocxHtml();
+      if (liveHtmlForGuide) {
         // Template dari upload file Word asli: jadikan isi/teksnya sebagai panduan struktur
         const tmpEl = document.createElement('div');
-        tmpEl.innerHTML = activeDoc.originalDocxHtml;
+        tmpEl.innerHTML = liveHtmlForGuide;
         const tplText = (tmpEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
         if (tplText) {
           templateStructure = `Template ini berasal dari file Word (.docx) yang di-upload pengguna. Berikut ringkasan isi & susunan bagiannya:\n"""${tplText}"""\nTugas: hasilkan dokumen dengan bagian-bagian yang mengikuti judul & urutan bagian pada template di atas.`;
@@ -2249,7 +2270,7 @@ Catatan: ${item.notes || '-'}
               <button
                 type="button"
                 onClick={() => {
-                  setGeneratedPreviewDoc(activeDoc);
+                  setGeneratedPreviewDoc({ ...activeDoc, originalDocxHtml: getLiveDocxHtml() });
                   setIsGeneratedPreviewModalOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-300 rounded-xl transition-all cursor-pointer shadow-2xs"
@@ -2537,9 +2558,7 @@ Catatan: ${item.notes || '-'}
                       ref={genDocxRef}
                       contentEditable={true}
                       suppressContentEditableWarning={true}
-                      onInput={(e) => {
-                        updateActiveTab({}, { ...activeDoc, originalDocxHtml: e.currentTarget.innerHTML });
-                      }}
+                      onBlur={commitDocxHtml}
                       dangerouslySetInnerHTML={{ __html: activeDoc.originalDocxHtml }}
                       className="docx-document-content min-h-[750px] p-2 leading-relaxed select-text focus:outline-none focus:ring-1 focus:ring-purple-300 rounded cursor-text"
                       title="Klik di sini untuk langsung mengedit naskah dokumen sesuai aslinya. Garis batas kolom tabel bisa ditarik untuk mengubah lebar kolom."
