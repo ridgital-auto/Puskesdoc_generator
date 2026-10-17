@@ -54,7 +54,9 @@ import {
   getStoredMedia,
   saveMediaItem,
   mediaExistsByDataUrl,
-  getStoredVariables
+  getStoredVariables,
+  getMargins,
+  saveMargins
 } from '../utils/storage';
 import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
@@ -86,6 +88,25 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
   const [docxVersion, setDocxVersion] = useState(0);
   // Palet pilihan warna font (swatch, bukan dropper)
   const [showColorPalette, setShowColorPalette] = useState(false);
+  // Margin kertas editor (dibagi dengan Generator via storage)
+  const [tplMarginPreset, setTplMarginPreset] = useState<'2,2,2,2' | '4,3,3,3' | '1,1,1,1' | 'custom'>(() => {
+    const m = getMargins();
+    if (m.top === 1 && m.left === 1 && m.right === 1 && m.bottom === 1) return '1,1,1,1';
+    if (m.top === 4 && m.left === 3 && m.right === 3 && m.bottom === 3) return '4,3,3,3';
+    if (m.top === 2 && m.left === 2 && m.right === 2 && m.bottom === 2) return '2,2,2,2';
+    return 'custom';
+  });
+  const [tplCustomMargin, setTplCustomMargin] = useState(() => {
+    const m = getMargins();
+    return { top: m.top, left: m.left, right: m.right, bottom: m.bottom };
+  });
+  const tplActiveMargins = useMemo(() => {
+    if (tplMarginPreset === '2,2,2,2') return { top: 2, left: 2, right: 2, bottom: 2 };
+    if (tplMarginPreset === '4,3,3,3') return { top: 4, left: 3, right: 3, bottom: 3 };
+    if (tplMarginPreset === '1,1,1,1') return { top: 1, left: 1, right: 1, bottom: 1 };
+    return tplCustomMargin;
+  }, [tplMarginPreset, tplCustomMargin]);
+  useEffect(() => { saveMargins(tplActiveMargins); }, [tplActiveMargins]);
   
   // Page number currently active in the paper editor
   const [editorActivePage, setEditorActivePage] = useState<number>(1);
@@ -1734,6 +1755,35 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
 
               {/* View Mode Switcher */}
               <div className="flex items-center gap-2">
+                {/* Pilihan Margin Kertas */}
+                <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-xl border border-slate-200" title="Atur margin (batas tepi) kertas editor">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Margin:</span>
+                  <select
+                    value={tplMarginPreset}
+                    onChange={(e) => setTplMarginPreset(e.target.value as any)}
+                    className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value="2,2,2,2">2, 2, 2, 2 cm (Standar)</option>
+                    <option value="4,3,3,3">4, 3, 3, 3 cm (Resmi Kemenkes)</option>
+                    <option value="1,1,1,1">1, 1, 1, 1 cm (Narrow)</option>
+                    <option value="custom">Kustom...</option>
+                  </select>
+                </div>
+                {tplMarginPreset === 'custom' && (
+                  <div className="flex items-center gap-1.5 bg-purple-50 px-2 py-1 rounded-xl border border-purple-200 text-[11px]">
+                    {(['top', 'left', 'bottom', 'right'] as const).map((k) => (
+                      <label key={k} className="flex items-center gap-0.5 font-semibold text-slate-600">
+                        {k === 'top' ? 'Atas' : k === 'left' ? 'Kiri' : k === 'bottom' ? 'Bawah' : 'Kanan'}:
+                        <input
+                          type="number" min="0.5" max="6" step="0.5"
+                          value={tplCustomMargin[k]}
+                          onChange={(e) => setTplCustomMargin({ ...tplCustomMargin, [k]: parseFloat(e.target.value) || 2 })}
+                          className="w-12 px-1 py-0.5 border border-purple-200 rounded bg-white text-center font-bold"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <button
                     type="button"
@@ -2441,7 +2491,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                   )}
 
                   {/* Interactive Simulated Paper Sheet (THE EXACT TARGET ELEMENT) */}
-                  <div className="bg-slate-200/80 p-4 sm:p-6 rounded-2xl border border-slate-300 shadow-inner flex justify-center overflow-x-auto">
+                  <div className="bg-slate-200/80 p-4 sm:p-6 rounded-2xl border border-slate-300 shadow-inner flex justify-safe-center overflow-x-auto">
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -2480,9 +2530,13 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                         maxWidth: editingTemplate.orientation === 'landscape' ? '1060px' : '820px',
                         minHeight: editingTemplate.orientation === 'landscape' ? '750px' : '1050px',
                         boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
+                        paddingTop: `${tplActiveMargins.top}cm`,
+                        paddingBottom: `${tplActiveMargins.bottom}cm`,
+                        paddingLeft: `${tplActiveMargins.left}cm`,
+                        paddingRight: `${tplActiveMargins.right}cm`,
                       }}
                       ref={paperWrapRef}
-                      className={`bg-white text-slate-900 p-8 sm:p-12 rounded-sm border transition-all relative flex flex-col justify-between ${
+                      className={`bg-white text-slate-900 rounded-sm border transition-all relative flex flex-col justify-between ${
                         isPaperDragOver ? 'ring-4 ring-purple-500 border-purple-500 bg-purple-50/20' : 'border-slate-300'
                       }`}
                     >
