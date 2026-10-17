@@ -101,6 +101,10 @@ export interface PuskesDoc {
   /** true bila originalDocxBase64 sudah berisi dokumen JADI (hasil isi-template)
    *  sehingga unduhan tinggal pakai berkasnya langsung. */
   docxBase64Ready?: boolean;
+  /** ID template pustaka yang dimuat ke dokumen ini (untuk deteksi versi baru). */
+  sourceTemplateId?: string;
+  /** updatedAt template saat dimuat (untuk deteksi versi baru). */
+  sourceTemplateUpdatedAt?: string;
 }
 
 export interface CanvasElement {

@@ -167,6 +167,10 @@ export default function App() {
       kopMode: template.kopMode || currentDoc.kopMode || 'manual',
       originalDocxHtml: template.originalDocxHtml,
       originalDocxBase64: template.originalDocxBase64,
+      docxBase64Ready: undefined,
+      templateFillOoxml: undefined,
+      sourceTemplateId: template.id,
+      sourceTemplateUpdatedAt: template.updatedAt,
     });
     setActiveTab('generator');
   };

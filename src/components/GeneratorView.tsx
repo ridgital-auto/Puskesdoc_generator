@@ -70,6 +70,7 @@ import {
   DocHistoryItem,
   getStoredDocuments,
   deleteDocument,
+  addDataChangeListener,
   getMargins,
   saveMargins
 } from '../utils/storage';
@@ -224,6 +225,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   // Arsip dokumen tersimpan (tombol "Simpan") — bisa dibuka & diunduh .docx
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [archiveList, setArchiveList] = useState<PuskesDoc[]>([]);
+  // Lacak template pustaka yang dimuat + notifikasi bila ada versi baru
+  const appliedTemplateRef = useRef<{ id: string; updatedAt: string } | null>(null);
+  const [templateUpdateNotice, setTemplateUpdateNotice] = useState<string | null>(null);
   const [docHistoryList, setDocHistoryList] = useState<DocHistoryItem[]>(getStoredDocHistory());
 
   // Variable autocomplete state when typing {{ or {{}}
@@ -454,7 +458,8 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   }, [activeDoc.title, docHistoryList]);
 
   useEffect(() => {
-    setStoredTemplates(getStoredDocumentTemplates());
+    const freshTemplates = getStoredDocumentTemplates();
+    setStoredTemplates(freshTemplates);
     setUserAccount(getStoredUserAccount());
     const list = getStoredAgentList();
     setAgentList(list);
@@ -462,6 +467,30 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     if (activeId && list.some((a) => a.id === activeId)) {
       setSelectedAgentId(activeId);
     }
+    // Jika dokumen aktif berasal dari template pustaka, cek apakah ada versi baru
+    const srcId = activeDoc.sourceTemplateId;
+    if (srcId) {
+      const latest = freshTemplates.find((t) => t.id === srcId);
+      if (latest) {
+        appliedTemplateRef.current = { id: srcId, updatedAt: activeDoc.sourceTemplateUpdatedAt || '' };
+        if (latest.updatedAt && latest.updatedAt !== activeDoc.sourceTemplateUpdatedAt) {
+          setTemplateUpdateNotice(latest.name);
+        }
+      }
+    }
+    // Dengarkan perubahan data (mis. template disimpan dari pengelola template)
+    // agar daftar template selalu segar tanpa perlu pilih ulang.
+    addDataChangeListener(() => {
+      const ft = getStoredDocumentTemplates();
+      setStoredTemplates(ft);
+      const applied = appliedTemplateRef.current;
+      if (applied) {
+        const lt = ft.find((t) => t.id === applied.id);
+        if (lt && lt.updatedAt && lt.updatedAt !== applied.updatedAt) {
+          setTemplateUpdateNotice(lt.name);
+        }
+      }
+    });
   }, []);
 
   const triggerNotice = (msg: string) => {
@@ -944,28 +973,41 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     }
   };
 
+  // Terapkan template pustaka ke dokumen aktif (selalu pakai data terbaru).
+  // Mencatat sourceTemplateId/UpdatedAt agar versi baru bisa terdeteksi.
+  const applyTemplateToDoc = (foundTpl: DocumentTemplate) => {
+    updateActiveTab({}, {
+      ...activeDoc,
+      title: foundTpl.name,
+      docType: (['SOP', 'SK', 'KAK', 'PEDOMAN', 'PANDUAN'].includes(foundTpl.docType) ? foundTpl.docType : 'CUSTOM') as DocumentType,
+      customTypeName: !['SOP', 'SK', 'KAK', 'PEDOMAN', 'PANDUAN'].includes(foundTpl.docType) ? foundTpl.name : undefined,
+      sections: foundTpl.sections.map((s, idx) => ({
+        id: s.id || `sec_tpl_${idx}`,
+        title: s.title,
+        content: s.content,
+      })),
+      useKop: foundTpl.useKopDefault ?? true,
+      kopMode: foundTpl.kopMode || 'manual',
+      originalDocxHtml: foundTpl.originalDocxHtml,
+      originalDocxBase64: foundTpl.originalDocxBase64,
+      docxBase64Ready: undefined,
+      templateFillOoxml: undefined,
+      sourceTemplateId: foundTpl.id,
+      sourceTemplateUpdatedAt: foundTpl.updatedAt,
+    });
+    appliedTemplateRef.current = { id: foundTpl.id, updatedAt: foundTpl.updatedAt };
+    setTemplateUpdateNotice(null);
+    triggerNotice(`Template "${foundTpl.name}" berhasil diterapkan!`);
+  };
+
   // Handle Type Change
   const handleTypeChange = (newTypeStr: string) => {
     if (newTypeStr.startsWith('tpl:')) {
       const tplId = newTypeStr.replace('tpl:', '');
-      const foundTpl = storedTemplates.find((t) => t.id === tplId);
+      // Selalu ambil versi TERBARU dari penyimpanan (bukan state yang bisa basi)
+      const foundTpl = getStoredDocumentTemplates().find((t) => t.id === tplId);
       if (foundTpl) {
-        updateActiveTab({}, {
-          ...activeDoc,
-          title: foundTpl.name,
-          docType: (['SOP', 'SK', 'KAK', 'PEDOMAN', 'PANDUAN'].includes(foundTpl.docType) ? foundTpl.docType : 'CUSTOM') as DocumentType,
-          customTypeName: !['SOP', 'SK', 'KAK', 'PEDOMAN', 'PANDUAN'].includes(foundTpl.docType) ? foundTpl.name : undefined,
-          sections: foundTpl.sections.map((s, idx) => ({
-            id: s.id || `sec_tpl_${idx}`,
-            title: s.title,
-            content: s.content,
-          })),
-          useKop: foundTpl.useKopDefault ?? true,
-          kopMode: foundTpl.kopMode || 'manual',
-          originalDocxHtml: foundTpl.originalDocxHtml,
-          originalDocxBase64: foundTpl.originalDocxBase64,
-        });
-        triggerNotice(`Template "${foundTpl.name}" berhasil diterapkan!`);
+        applyTemplateToDoc(foundTpl);
         return;
       }
     }
@@ -2592,6 +2634,28 @@ Catatan: ${item.notes || '-'}
                 {/* If original DOCX HTML is available: Render authentic document appearance directly editable */}
                 {activeDoc.originalDocxHtml ? (
                   <div className="space-y-4">
+                    {/* Notifikasi: template pustaka ada versi baru */}
+                    {templateUpdateNotice && (
+                      <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 no-print">
+                        <span className="font-semibold flex items-center gap-1.5">
+                          <RefreshCw className="w-4 h-4 text-amber-600" />
+                          Template "{templateUpdateNotice}" telah diperbarui di Pustaka Template.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const srcId = appliedTemplateRef.current?.id || activeDoc.sourceTemplateId;
+                            const fresh = srcId ? getStoredDocumentTemplates().find((t) => t.id === srcId) : null;
+                            if (!fresh) { setTemplateUpdateNotice(null); return; }
+                            if (!window.confirm(`Muat ulang template "${fresh.name}" versi terbaru? Isi lembar kerja saat ini akan diganti.`)) return;
+                            applyTemplateToDoc(fresh);
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shrink-0 cursor-pointer"
+                        >
+                          Muat Versi Terbaru
+                        </button>
+                      </div>
+                    )}
                     <div className="p-2.5 bg-pink-50 border border-pink-200 rounded-xl flex items-center justify-between text-xs text-pink-900 no-print">
                       <span className="font-semibold flex items-center gap-1.5">
                         <FileCheck className="w-4 h-4 text-pink-600" />
