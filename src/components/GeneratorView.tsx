@@ -1021,7 +1021,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             const newSectionsFill = activeDoc.sections.length > 0
               ? activeDoc.sections.map((s, i) => (i === 0 ? { ...s, content: filledText } : s))
               : [{ id: 'sec_fill_0', title: 'Naskah Terisi', content: filledText }];
-            updateActiveTab({}, { ...activeDoc, originalDocxHtml: filledHtml, sections: newSectionsFill });
+            const filledDoc: PuskesDoc = { ...activeDoc, originalDocxHtml: filledHtml, sections: newSectionsFill };
+            updateActiveTab({}, filledDoc);
+            setGeneratedPreviewDoc(filledDoc);
             setProgressPercent(100);
             setProgressStepText('Selesai!');
             triggerNotice(`Berhasil mengisi ${filledCount} dari ${prep.markers.length} bagian bertanda [...] langsung di template!`);
