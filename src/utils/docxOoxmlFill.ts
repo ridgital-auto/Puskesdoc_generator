@@ -44,7 +44,11 @@ function setPreserve(el: Element): void {
 
 /**
  * Ganti rentang [start, end) pada peta w:t dengan teks pengganti.
- * Mendukung \n → <w:br/> di dalam run yang sama (format dipertahankan).
+ *
+ * Teks multi-baris (\n) dipecah menjadi PARAGRAF Word baru (<w:p>), BUKAN
+ * <w:br/>. Alasannya: <w:br/> di dalam paragraf rata kanan-kiri (justify)
+ * membuat tiap baris ter-stretch penuh (jelek). Paragraf baru mewarisi
+ * <w:pPr> (format paragraf) dan <w:rPr> (format huruf) aslinya.
  */
 function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, end: number, replacement: string): boolean {
   const hits = nodes.filter((n) => n.start < end && n.end > start);
@@ -53,36 +57,54 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   const last = hits[hits.length - 1];
   const before = (first.el.textContent || '').slice(0, Math.max(0, start - first.start));
   const after = (last.el.textContent || '').slice(Math.max(0, end - last.start));
-  // Kosongkan node tengah
+  // Kosongkan node yang tertimpa selain pertama
   for (let i = 1; i < hits.length; i++) hits[i].el.textContent = '';
 
   const lines = replacement.split('\n');
+  const pEl = findAncestor(first.el, 'w:p');
+
+  if (lines.length === 1 || !pEl || !pEl.parentNode) {
+    // Satu baris: ganti di tempat
+    first.el.textContent = before + lines.join(' ') + after;
+    setPreserve(first.el);
+    return true;
+  }
+
+  // Baris pertama tetap di paragraf asal
   first.el.textContent = before + lines[0];
   setPreserve(first.el);
 
-  const rEl = first.el.parentNode;
-  let refNode: Node = first.el;
-  if (rEl) {
-    for (let i = 1; i < lines.length; i++) {
-      const br = xmlDoc.createElement('w:br');
-      const nt = xmlDoc.createElement('w:t');
-      setPreserve(nt);
-      nt.textContent = lines[i];
-      rEl.insertBefore(br, refNode.nextSibling);
-      rEl.insertBefore(nt, br.nextSibling);
-      refNode = nt;
-    }
-  } else if (lines.length > 1) {
-    // Fallback: tanpa <w:br/>, gabung dengan spasi
-    first.el.textContent = before + lines.join(' ');
-    return true;
-  }
-  if (after) {
-    const target = refNode as Element;
-    target.textContent = (target.textContent || '') + after;
-    setPreserve(target);
+  const pPr = pEl.getElementsByTagName('w:pPr')[0];
+  const rEl = first.el.parentNode as Element | null;
+  const rPr = rEl ? rEl.getElementsByTagName('w:rPr')[0] : null;
+  const parent = pEl.parentNode;
+  let insertAfter: Node = pEl;
+
+  for (let i = 1; i < lines.length; i++) {
+    const isLast = i === lines.length - 1;
+    const newP = xmlDoc.createElement('w:p');
+    if (pPr) newP.appendChild(pPr.cloneNode(true));
+    const newR = xmlDoc.createElement('w:r');
+    if (rPr) newR.appendChild(rPr.cloneNode(true));
+    const newT = xmlDoc.createElement('w:t');
+    setPreserve(newT);
+    newT.textContent = lines[i] + (isLast ? after : '');
+    newR.appendChild(newT);
+    newP.appendChild(newR);
+    parent.insertBefore(newP, insertAfter.nextSibling);
+    insertAfter = newP;
   }
   return true;
+}
+
+/** Cari elemen leluhur dengan nama tag tertentu. */
+function findAncestor(el: Element, tag: string): Element | null {
+  let cur: Node | null = el.parentNode;
+  while (cur) {
+    if ((cur as Element).tagName === tag) return cur as Element;
+    cur = cur.parentNode;
+  }
+  return null;
 }
 
 /**
@@ -143,6 +165,28 @@ export async function fillDocxOoxml(base64: string, fills: OoxmlFill[]): Promise
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     compression: 'DEFLATE',
   });
+}
+
+/** Ubah Blob menjadi string base64 (tanpa prefix data:). */
+export function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const url = reader.result as string;
+      resolve(url.includes(',') ? url.split(',')[1] : url);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Ubah string base64 menjadi Blob. */
+export function base64ToBlob(base64: string, mimeType: string): Blob {
+  const clean = base64.includes(',') ? base64.split(',')[1] : base64;
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
 }
 
 /** Unduh Blob sebagai berkas dengan nama tertentu. */

@@ -33,7 +33,8 @@ import {
   ZoomIn,
   FolderOpen
 } from 'lucide-react';
-import { extractTextFromDocx, extractDocxAsHtml } from '../utils/docxReader';
+import { extractTextFromDocx, extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
+import { fillDocxOoxml, blobToBase64 } from '../utils/docxOoxmlFill';
 import { 
   DocumentType, 
   IlpKlaster, 
@@ -182,9 +183,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     if (!genDocxRef.current) return;
     const html = genDocxRef.current.innerHTML;
     if (html !== activeDoc.originalDocxHtml) {
-      // Naskah diubah manual setelah generate → unduhan OOXML tidak valid lagi,
-      // pakai konverter HTML biasa.
-      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html, templateFillOoxml: undefined });
+      // Naskah diubah manual setelah generate → berkas Word biner tidak valid lagi,
+      // unduhan pakai konverter HTML biasa.
+      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html, templateFillOoxml: undefined, originalDocxBase64: undefined, docxBase64Ready: undefined });
     }
   };
   // Zoom kertas generator (auto-fit seperti MS Word)
@@ -1014,6 +1015,10 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
       return;
     }
 
+    // Sinkronkan dulu bila pengguna sempat mengedit lembar kerja (agar
+    // base64 Word tidak basi saat mode isi-template).
+    commitDocxHtml();
+
     setIsGenerating(true);
     setErrorMsg(null);
     setProgressPercent(10);
@@ -1063,21 +1068,39 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             signal: abortControllerRef.current.signal,
           });
           if (fillRes.success && fillRes.fills) {
-            const { html: filledHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills);
+            const ooxmlFills = prep.markers
+              .map((m) => ({ marker: m.original, text: String(fillRes.fills?.[String(m.id)] ?? '') }))
+              .filter((f) => f.marker);
+            // Cara TERBAIK: isi file Word asli → render ulang dengan docx-preview
+            // agar pagination SEJATI (konten mengalir ke halaman 2, 3, dst sesuai Word).
+            let filledHtml: string;
+            let filledBase64: string | undefined;
+            const { html: fallbackHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills);
+            if (activeDoc.originalDocxBase64 && ooxmlFills.length > 0) {
+              try {
+                const filledBlob = await fillDocxOoxml(activeDoc.originalDocxBase64, ooxmlFills);
+                const offscreen = document.createElement('div');
+                await renderDocxToContainer(filledBlob, offscreen);
+                filledHtml = offscreen.innerHTML;
+                filledBase64 = await blobToBase64(filledBlob);
+              } catch (e) {
+                console.warn('Render ulang docx gagal, pakai HTML:', e);
+                filledHtml = fallbackHtml;
+              }
+            } else {
+              filledHtml = fallbackHtml;
+            }
             const filledText = htmlToPlainText(filledHtml);
             const newSectionsFill = activeDoc.sections.length > 0
               ? activeDoc.sections.map((s, i) => (i === 0 ? { ...s, content: filledText } : s))
               : [{ id: 'sec_fill_0', title: 'Naskah Terisi', content: filledText }];
-            // Simpan pasangan penanda→isian agar unduhan .docx bisa memakai
-            // file Word asli (fidelity 100%) bila base64-nya tersedia.
-            const ooxmlFills = prep.markers
-              .map((m) => ({ marker: m.original, text: String(fillRes.fills?.[String(m.id)] ?? '') }))
-              .filter((f) => f.marker);
+            // filledBase64 = berkas Word yang SUDAH terisi → unduhan tinggal pakai langsung.
             const filledDoc: PuskesDoc = {
               ...activeDoc,
               originalDocxHtml: filledHtml,
               sections: newSectionsFill,
-              templateFillOoxml: ooxmlFills.length > 0 ? { fills: ooxmlFills } : undefined,
+              templateFillOoxml: undefined,
+              ...(filledBase64 ? { originalDocxBase64: filledBase64, docxBase64Ready: true } : {}),
             };
             updateActiveTab({}, filledDoc);
             setGeneratedPreviewDoc(filledDoc);

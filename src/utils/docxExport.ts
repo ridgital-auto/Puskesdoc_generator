@@ -13,7 +13,7 @@ import {
 import { PuskesDoc, FaskesProfile } from '../types';
 import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
 import { exportHtmlToDocx } from './htmlToDocx';
-import { fillDocxOoxml, downloadBlob } from './docxOoxmlFill';
+import { fillDocxOoxml, downloadBlob, base64ToBlob } from './docxOoxmlFill';
 import { htmlToDocxBlob } from './htmlToDocx';
 
 /** Properti halaman Word sesuai pilihan ukuran kertas pengguna. */
@@ -34,16 +34,25 @@ function getPageProperties() {
 }
 
 export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Promise<void> {
+  const dlFileName = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`;
+
   // 1) Mode isi-template + file Word asli tersedia: isi [...] langsung di
   //    berkas asli → 100% sama persis (tabel, kop, header/footer, gambar).
   if (doc.originalDocxBase64 && doc.templateFillOoxml?.fills?.length) {
     try {
       const blob = await fillDocxOoxml(doc.originalDocxBase64, doc.templateFillOoxml.fills);
-      downloadBlob(blob, `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`);
+      downloadBlob(blob, dlFileName);
       return;
     } catch (err) {
       console.warn('OOXML fill gagal, pakai konverter HTML:', err);
     }
+  }
+
+  // 1b) Berkas Word biner sudah berisi dokumen JADI (hasil isi-template yang
+  //     di-render ulang) → unduh langsung tanpa konversi.
+  if (doc.originalDocxBase64 && doc.docxBase64Ready) {
+    downloadBlob(base64ToBlob(doc.originalDocxBase64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), dlFileName);
+    return;
   }
 
   // 2) Dokumen berbasis template Word asli: konversi HTML menjadi .docx ASLI
@@ -403,6 +412,11 @@ export async function generateDocxBlob(doc: PuskesDoc, profile: FaskesProfile): 
     } catch (err) {
       console.warn('OOXML fill gagal, pakai jalur biasa:', err);
     }
+  }
+
+  // Berkas Word biner sudah berisi dokumen JADI → pakai langsung
+  if (doc.originalDocxBase64 && doc.docxBase64Ready) {
+    return { blob: base64ToBlob(doc.originalDocxBase64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), fileName: ooxmlFileName };
   }
 
   // Dokumen template Word (HTML) tapi tanpa data OOXML: konversi HTML → blob

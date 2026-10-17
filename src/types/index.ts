@@ -98,6 +98,9 @@ export interface PuskesDoc {
   /** Data isian [...] untuk unduhan via file Word asli (fidelity 100%).
    *  Dihapus otomatis bila pengguna mengedit naskah setelah generate. */
   templateFillOoxml?: { fills: OoxmlFill[] };
+  /** true bila originalDocxBase64 sudah berisi dokumen JADI (hasil isi-template)
+   *  sehingga unduhan tinggal pakai berkasnya langsung. */
+  docxBase64Ready?: boolean;
 }
 
 export interface CanvasElement {
