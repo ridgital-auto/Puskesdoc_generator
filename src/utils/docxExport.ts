@@ -12,6 +12,7 @@ import {
 } from 'docx';
 import { PuskesDoc, FaskesProfile } from '../types';
 import { getPaperSize, paperSizeToTwips } from './storage';
+import { exportHtmlToDocx } from './htmlToDocx';
 
 /** Properti halaman Word sesuai pilihan ukuran kertas pengguna. */
 function getPageProperties() {
@@ -29,34 +30,11 @@ function getPageProperties() {
   };
 }
 
-/** Unduh dokumen template Word (HTML) sebagai berkas .doc yang dibuka native oleh MS Word. */
-export function downloadWordHtmlDoc(doc: PuskesDoc): void {
-  const safeTitle = (doc.title || 'dokumen').replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').trim().substring(0, 40) || 'dokumen';
-  const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
-<style>body{font-family:Calibri,Arial,sans-serif;}</style>
-<title>${safeTitle}</title>
-</head>
-<body>${doc.originalDocxHtml || ''}</body>
-</html>`;
-  const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${doc.docType || 'Dokumen'}_${safeTitle}.doc`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(link.href), 5000);
-}
-
 export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Promise<void> {
-  // Dokumen berbasis template Word asli (.docx): unduh sebagai Word-HTML (.doc)
-  // agar TAMPIL PERSIS seperti lembar kerja (tabel, kop, format utuh).
-  // Microsoft Word membuka berkas .doc berisi HTML ini secara native.
+  // Dokumen berbasis template Word asli: konversi HTML menjadi .docx ASLI
+  // (tabel jadi tabel Word betulan) — tampil persis seperti lembar kerja.
   if (doc.originalDocxHtml && doc.originalDocxHtml.trim()) {
-    downloadWordHtmlDoc(doc);
+    await exportHtmlToDocx(doc);
     return;
   }
 

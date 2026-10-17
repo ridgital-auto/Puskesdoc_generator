@@ -2220,11 +2220,11 @@ Catatan: ${item.notes || '-'}
                 Lembar Kerja (Hal {safeCurrentPage}/{totalTargetPages})
               </span>
 
-              {/* Tombol Lihat Hasil (Pop-up Preview) */}
+              {/* Tombol Lihat Hasil (Pop-up Preview) — selalu tampilkan kondisi TERKINI lembar kerja */}
               <button
                 type="button"
                 onClick={() => {
-                  setGeneratedPreviewDoc(generatedPreviewDoc || activeDoc);
+                  setGeneratedPreviewDoc(activeDoc);
                   setIsGeneratedPreviewModalOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-300 rounded-xl transition-all cursor-pointer shadow-2xs"

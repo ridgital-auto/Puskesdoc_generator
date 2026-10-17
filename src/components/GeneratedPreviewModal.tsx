@@ -123,10 +123,10 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
             <button
               onClick={handleDownloadDocx}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition-all cursor-pointer"
-              title={generatedDoc.originalDocxHtml ? 'Unduh sebagai berkas Word (.doc) persis tampilan lembar kerja' : 'Unduh langsung sebagai berkas Microsoft Word (.docx)'}
+              title="Unduh langsung sebagai berkas Microsoft Word (.docx)"
             >
               <Download className="w-4 h-4 text-purple-600" />
-              <span>{generatedDoc.originalDocxHtml ? 'Unduh .DOC' : 'Unduh .DOCX'}</span>
+              <span>Unduh .DOCX</span>
             </button>
             <PaperSizeSelector compact onNotify={onNotify} />
 
@@ -160,7 +160,13 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
               </p>
             </div>
 
-            {/* Sections */}
+            {/* Sections — atau tampilan Word asli bila dokumen berasal dari template .docx */}
+            {generatedDoc.originalDocxHtml ? (
+              <div
+                className="docx-document-content bg-white"
+                dangerouslySetInnerHTML={{ __html: generatedDoc.originalDocxHtml }}
+              />
+            ) : (
             <div className="space-y-5">
               {generatedDoc.sections.map((sec, idx) => (
                 <div key={sec.id || idx} className="space-y-1.5">
@@ -186,6 +192,7 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
                 </div>
               ))}
             </div>
+            )}
 
             {/* Sign-off */}
             <div className="pt-6 flex justify-end text-xs">
