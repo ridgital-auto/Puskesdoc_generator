@@ -92,7 +92,8 @@
   border: 1px solid #e2e8f0 !important;
   margin: 0 auto 28px auto !important;
   width: 100% !important;
-  overflow: hidden;
+  /* overflow dibiarkan visible agar tabel/gambar yang lebar tidak terpotong
+     dan area luar tetap bisa di-scroll/digeser */
   page-break-after: always;
   position: relative;
 }
