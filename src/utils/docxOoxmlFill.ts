@@ -64,7 +64,9 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   const pEl = findAncestor(first.el, 'w:p');
 
   if (lines.length === 1 || !pEl || !pEl.parentNode) {
-    // Satu baris: ganti di tempat
+    // Satu baris: ganti di tempat; hapus warna penanda
+    const rElSingle = first.el.parentNode as Element | null;
+    stripMarkerColor(rElSingle ? rElSingle.getElementsByTagName('w:rPr')[0] : null);
     first.el.textContent = before + lines.join(' ') + after;
     setPreserve(first.el);
     return true;
@@ -77,13 +79,25 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   const pPr = pEl.getElementsByTagName('w:pPr')[0];
   const rEl = first.el.parentNode as Element | null;
   const rPr = rEl ? rEl.getElementsByTagName('w:rPr')[0] : null;
+  // Warna merah penanda [...] jangan ikut ke isian
+  stripMarkerColor(rPr);
   const parent = pEl.parentNode;
   let insertAfter: Node = pEl;
 
   for (let i = 1; i < lines.length; i++) {
     const isLast = i === lines.length - 1;
     const newP = xmlDoc.createElement('w:p');
-    if (pPr) newP.appendChild(pPr.cloneNode(true));
+    if (pPr) {
+      const pPrClone = pPr.cloneNode(true) as Element;
+      // Jangan warisi penomoran otomatis (w:numPr) — isian AI sudah membawa
+      // penomorannya sendiri sebagai teks biasa (a., b., 1., 2.).
+      const numPrs = pPrClone.getElementsByTagName('w:numPr');
+      for (let j = numPrs.length - 1; j >= 0; j--) {
+        const np = numPrs[j];
+        np.parentNode?.removeChild(np);
+      }
+      newP.appendChild(pPrClone);
+    }
     const newR = xmlDoc.createElement('w:r');
     if (rPr) newR.appendChild(rPr.cloneNode(true));
     const newT = xmlDoc.createElement('w:t');
@@ -95,6 +109,22 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
     insertAfter = newP;
   }
   return true;
+}
+
+/** Hapus warna/highlight penanda dari properti run — warna [...] hanya
+ *  penanda visual bagi penulis template, bukan warna isi dokumen. */
+function stripMarkerColor(rPr: Element | null | undefined): void {
+  if (!rPr) return;
+  const colors = rPr.getElementsByTagName('w:color');
+  for (let i = colors.length - 1; i >= 0; i--) {
+    const c = colors[i];
+    c.parentNode?.removeChild(c);
+  }
+  const highlights = rPr.getElementsByTagName('w:highlight');
+  for (let i = highlights.length - 1; i >= 0; i--) {
+    const h = highlights[i];
+    h.parentNode?.removeChild(h);
+  }
 }
 
 /** Cari elemen leluhur dengan nama tag tertentu. */
