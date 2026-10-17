@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { PuskesDoc, FaskesProfile } from '../types';
 import { exportToDocx, generateDocxBase64 } from '../utils/docxExport';
-import { saveMediaItem } from '../utils/storage';
+import { saveMediaItem, getPaperSize } from '../utils/storage';
 import { PaperSizeSelector } from './PaperSizeSelector';
 
 interface GeneratedPreviewModalProps {
@@ -87,7 +87,9 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
                   Preview Hasil Generate AI
                 </span>
                 <span className="text-xs font-bold text-fuchsia-200">
-                  {generatedDoc.docType} · {generatedDoc.targetPages || 2} Halaman
+                  {generatedDoc.docType} · {generatedDoc.originalDocxHtml
+                    ? Math.max(1, (generatedDoc.originalDocxHtml.match(/class="docx"/g) || []).length)
+                    : (generatedDoc.targetPages || 2)} Halaman
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-extrabold truncate max-w-lg mt-0.5">
@@ -140,11 +142,11 @@ export const GeneratedPreviewModal: React.FC<GeneratedPreviewModalProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Preview Body (A4 Style Paper View) */}
+        {/* Scrollable Preview Body (A4 Style Paper View) — lebar mengikuti ukuran kertas terpilih */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 flex justify-center">
           <div 
-            style={{ fontFamily: 'Arial, sans-serif' }}
-            className="w-full max-w-[760px] bg-white text-slate-900 p-8 sm:p-12 shadow-xl rounded-sm border border-slate-300 space-y-6 select-text"
+            style={{ fontFamily: 'Arial, sans-serif', maxWidth: `${Math.round(getPaperSize().widthMm * 96 / 25.4)}px` }}
+            className="w-full bg-white text-slate-900 p-8 sm:p-12 shadow-xl rounded-sm border border-slate-300 space-y-6 select-text"
           >
             {/* Header / Meta */}
             <div className="border-b-2 border-slate-900 pb-3">

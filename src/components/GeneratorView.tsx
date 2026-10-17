@@ -1350,6 +1350,12 @@ Catatan: ${item.notes || '-'}
 
   // Determine pagination split of sections for multi-page rendering
   const totalTargetPages = activeTab.targetPages || 2;
+  // Dokumen template Word: ikuti JUMLAH HALAMAN ASLI dari HTML (1 section.docx = 1 halaman),
+  // bukan patokan targetPages — pratinjau & unduhan mengikuti hasil sebenarnya.
+  const actualDocxPages = activeDoc.originalDocxHtml
+    ? Math.max(1, (activeDoc.originalDocxHtml.match(/class="docx"/g) || []).length)
+    : 0;
+  const displayTotalPages = actualDocxPages > 0 ? actualDocxPages : totalTargetPages;
   const sectionsPerPage = Math.max(1, Math.ceil(activeDoc.sections.length / totalTargetPages));
 
   // Current single page slice to render
@@ -2487,7 +2493,7 @@ Catatan: ${item.notes || '-'}
                   <div className={`text-[10px] text-slate-500 font-mono pb-1 border-b border-slate-100 ${
                     activeDoc.pageNumberPosition === 'top-center' ? 'text-center' : 'text-right'
                   }`}>
-                    Halaman {safeCurrentPage} dari {totalTargetPages}
+                    Halaman {actualDocxPages > 0 ? 1 : safeCurrentPage} dari {displayTotalPages}
                   </div>
                 )}
 
@@ -2819,7 +2825,7 @@ Catatan: ${item.notes || '-'}
                   activeDoc.pageNumberPosition === 'bottom-left' ? 'text-left' :
                   'text-right'
                 }`}>
-                  Halaman {safeCurrentPage} dari {totalTargetPages}
+                  Halaman {actualDocxPages > 0 ? 1 : safeCurrentPage} dari {displayTotalPages}
                 </div>
               )}
             </div>

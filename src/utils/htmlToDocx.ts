@@ -155,7 +155,8 @@ function inlineToRuns(node: Node, fmt: Fmt, imgMap: Map<HTMLImageElement, Loaded
   el.childNodes.forEach((ch) => inlineToRuns(ch, next, imgMap, out));
 }
 
-const BLOCK_TAGS = /^(p|div|h1|h2|h3|h4|h5|h6|li|section|article|header|footer|figure|figcaption|blockquote|address|pre)$/;
+const CONTAINER_TAGS = /^(div|section|article|figure|header|footer)$/;
+const PARA_TAGS = /^(p|h1|h2|h3|h4|h5|h6|li|blockquote|pre|figcaption|address)$/;
 
 function headingLevel(tag: string): DocxHeading | undefined {
   switch (tag) {
@@ -302,12 +303,15 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
       });
       return;
     }
-    if (BLOCK_TAGS.test(tag)) {
-      // Blok yang mengandung tabel/gambar sebagai anak langsung → uraikan dulu
-      const hasNestedBlock = Array.from(el.childNodes).some(
-        (n) => n.nodeType === 1 && /^(table|img|ul|ol)$/.test((n as HTMLElement).tagName.toLowerCase())
-      );
-      if (hasNestedBlock && (tag === 'div' || tag === 'section' || tag === 'article' || tag === 'td' || tag === 'figure')) {
+    // Kontainer (section/article/div/...) SELALU diurai isinya — jangan pernah
+    // dijadikan satu paragraf, karena tabel di dalamnya akan terbuang.
+    if (CONTAINER_TAGS.test(tag)) {
+      convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) });
+      return;
+    }
+    if (PARA_TAGS.test(tag)) {
+      // Paragraf yang mengandung tabel di dalamnya → uraikan sebagai blok
+      if (el.querySelector('table')) {
         convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) });
         return;
       }
@@ -335,11 +339,18 @@ function preloadImages(root: Element): Promise<Map<HTMLImageElement, LoadedImg>>
           if (!src.startsWith('data:image')) return resolve();
           const mime = (src.split(';')[0] || '').split('/')[1] || 'png';
           const imgType: ImgType = mime === 'jpeg' || mime === 'jpg' ? 'jpg' : mime === 'gif' ? 'gif' : mime === 'bmp' ? 'bmp' : 'png';
+          // Ukuran tampil dari style/atribut (docx-preview menulisnya eksplisit);
+          // hanya bila tidak ada, pakai ukuran asli gambar.
+          const dispW = parseFloat(img.style.width) || parseFloat(img.getAttribute('width') || '') || 0;
+          const dispH = parseFloat(img.style.height) || parseFloat(img.getAttribute('height') || '') || 0;
           const probe = new Image();
           probe.onload = () => {
             try {
-              const natW = probe.naturalWidth || 200;
-              const natH = probe.naturalHeight || 150;
+              let natW = probe.naturalWidth || 200;
+              let natH = probe.naturalHeight || 150;
+              if (dispW > 0 && dispH > 0) { natW = dispW; natH = dispH; }
+              else if (dispW > 0) { natH = (natH * dispW) / natW; natW = dispW; }
+              else if (dispH > 0) { natW = (natW * dispH) / natH; natH = dispH; }
               const scale = Math.min(1, MAX_W / natW);
               // Ambil bytes dari data URL
               const parts = src.split(',');
