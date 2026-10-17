@@ -317,6 +317,26 @@ export function getPaperSize(): PaperSizeSetting {
 export function savePaperSize(setting: PaperSizeSetting): void {
   localStorage.setItem(PAPER_SIZE_KEY, JSON.stringify(setting));
 }
+/** Margin kertas dalam cm — dibagikan antara lembar kerja & unduhan .docx. */
+export interface MarginSetting { top: number; left: number; right: number; bottom: number; }
+const MARGIN_KEY = 'puskesdoc_margin';
+export function getMargins(): MarginSetting {
+  try {
+    const raw = localStorage.getItem(MARGIN_KEY);
+    if (raw) {
+      const m = JSON.parse(raw);
+      if (m && m.top >= 0 && m.left >= 0 && m.right >= 0 && m.bottom >= 0) return m as MarginSetting;
+    }
+  } catch (e) { console.error('Failed reading margins from localStorage', e); }
+  return { top: 2, left: 2, right: 2, bottom: 2 };
+}
+export function saveMargins(m: MarginSetting): void {
+  try { localStorage.setItem(MARGIN_KEY, JSON.stringify(m)); } catch (e) { console.error('Failed saving margins', e); }
+}
+/** cm → twips (satuan Word): 1 inci = 1440 twips = 2,54 cm */
+export function cmToTwips(cm: number): number {
+  return Math.round((cm * 1440) / 2.54);
+}
 /** Konversi ukuran kertas ke twips (satuan docx): 1 mm = 56.6929 twips */
 export function paperSizeToTwips(setting: PaperSizeSetting): { width: number; height: number } {
   const preset = setting.id !== 'custom' ? PAPER_SIZE_PRESETS[setting.id] : null;

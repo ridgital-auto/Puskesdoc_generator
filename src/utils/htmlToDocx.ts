@@ -27,7 +27,7 @@ import {
   BorderStyle,
 } from 'docx';
 import type { PuskesDoc } from '../types';
-import { getPaperSize, paperSizeToTwips } from './storage';
+import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
 
 interface Fmt {
   bold?: boolean;
@@ -392,13 +392,19 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
 
   const { width, height } = paperSizeToTwips(getPaperSize());
+  const mg = getMargins();
   return new Document({
     sections: [
       {
         properties: {
           page: {
             size: { width, height },
-            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+            margin: {
+              top: cmToTwips(mg.top),
+              right: cmToTwips(mg.right),
+              bottom: cmToTwips(mg.bottom),
+              left: cmToTwips(mg.left),
+            },
           },
         },
         children,

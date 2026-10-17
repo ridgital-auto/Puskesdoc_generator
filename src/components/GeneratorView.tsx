@@ -65,7 +65,9 @@ import {
   getStoredDocHistory,
   saveDocHistoryItem,
   clearDocHistory,
-  DocHistoryItem
+  DocHistoryItem,
+  getMargins,
+  saveMargins
 } from '../utils/storage';
 import { exportToDocx } from '../utils/docxExport';
 import { generateStructuredPrompt } from '../utils/promptGenerator';
@@ -136,8 +138,17 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
   // Paper Size & Margin States
   const [paperSize, setPaperSize] = useState<'A4' | 'F4' | 'Letter'>('A4');
-  const [marginPreset, setMarginPreset] = useState<'2,2,2,2' | '4,3,3,3' | 'custom'>('2,2,2,2');
-  const [customMargin, setCustomMargin] = useState({ top: 2, left: 2, right: 2, bottom: 2 });
+  const [marginPreset, setMarginPreset] = useState<'2,2,2,2' | '4,3,3,3' | '1,1,1,1' | 'custom'>(() => {
+    const m = getMargins();
+    if (m.top === 1 && m.left === 1 && m.right === 1 && m.bottom === 1) return '1,1,1,1';
+    if (m.top === 4 && m.left === 3 && m.right === 3 && m.bottom === 3) return '4,3,3,3';
+    if (m.top === 2 && m.left === 2 && m.right === 2 && m.bottom === 2) return '2,2,2,2';
+    return 'custom';
+  });
+  const [customMargin, setCustomMargin] = useState(() => {
+    const m = getMargins();
+    return { top: m.top, left: m.left, right: m.right, bottom: m.bottom };
+  });
 
   // AI Agent Selection State (Default: Google Gemini 3.8 Flash via kunci API pribadi)
   // selectedAgentId: 'gemini' atau id custom agent tersimpan (mis. "Maku")
@@ -439,8 +450,16 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     if (marginPreset === '4,3,3,3') {
       return { top: 4, left: 3, right: 3, bottom: 3 };
     }
+    if (marginPreset === '1,1,1,1') {
+      return { top: 1, left: 1, right: 1, bottom: 1 };
+    }
     return customMargin;
   }, [marginPreset, customMargin]);
+
+  // Simpan margin terpilih agar dipakai juga saat unduh .docx / cetak
+  useEffect(() => {
+    saveMargins(activeMargins);
+  }, [activeMargins]);
 
   // Paper Dimensions computation
   const paperDimensions = useMemo(() => {
@@ -2289,6 +2308,7 @@ Catatan: ${item.notes || '-'}
                 >
                   <option value="2,2,2,2">2, 2, 2, 2 cm (Standar)</option>
                   <option value="4,3,3,3">4, 3, 3, 3 cm (Resmi Kemenkes)</option>
+                  <option value="1,1,1,1">1, 1, 1, 1 cm (Narrow)</option>
                   <option value="custom">Kustom Margin...</option>
                 </select>
               </div>
