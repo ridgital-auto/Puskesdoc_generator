@@ -61,6 +61,13 @@
     height: auto !important;
     margin: 0 !important;
   }
+  /* Halaman dokumen Word asli: cetak sebagai halaman nyata tanpa bayangan */
+  .docx-document-content section.docx {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    page-break-after: always;
+  }
   @page {
     size: A4;
     margin: 15mm;
@@ -76,24 +83,23 @@
   word-break: break-word;
 }
 
-/* Support for docx-preview generated wrapper and sections */
-.docx-document-content .docx-wrapper {
-  background: transparent !important;
-  padding: 0 !important;
-}
-
+/* Tampilan HALAMAN DISKRIT untuk dokumen Word asli:
+   tiap <section class="docx"> = 1 halaman (kertas penuh → lanjut halaman berikut),
+   berlaku di lembar kerja, pratinjau, dan "Lihat Hasil". */
 .docx-document-content section.docx {
-  box-shadow: none !important;
-  margin: 0 0 2rem 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
+  background: #ffffff !important;
+  box-shadow: 0 4px 18px rgba(15,23,42,.16) !important;
+  border: 1px solid #e2e8f0 !important;
+  margin: 0 auto 28px auto !important;
   width: 100% !important;
-  min-height: auto !important;
+  overflow: hidden;
+  page-break-after: always;
+  position: relative;
 }
 
 .docx-document-content section.docx + section.docx {
-  padding-top: 2rem !important;
-  border-top: 2px dashed #cbd5e1 !important;
+  border-top: 1px solid #e2e8f0 !important;
+  padding-top: 0 !important;
 }
 
 .docx-document-content table {

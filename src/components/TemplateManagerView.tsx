@@ -84,6 +84,8 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
   const [docxDisplayMode, setDocxDisplayMode] = useState<'original_docx' | 'sections'>('original_docx');
   // Version counter: memicu render ulang tampilan asli Word (high-fidelity)
   const [docxVersion, setDocxVersion] = useState(0);
+  // Palet pilihan warna font (swatch, bukan dropper)
+  const [showColorPalette, setShowColorPalette] = useState(false);
   
   // Page number currently active in the paper editor
   const [editorActivePage, setEditorActivePage] = useState<number>(1);
@@ -1989,21 +1991,33 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                     >
                       <Underline className="w-3.5 h-3.5" />
                     </button>
-                    <label
-                      className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-300 transition-colors cursor-pointer flex items-center"
-                      title="Warna Font — pilih teks dulu lalu klik untuk ganti warna"
-                    >
-                      <span className="relative flex items-center">
-                        <Type className="w-3.5 h-3.5" />
-                        <span className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-sm bg-red-600" />
-                      </span>
-                      <input
-                        type="color"
-                        defaultValue="#ff0000"
-                        className="absolute opacity-0 w-0 h-0"
-                        onChange={(e) => execFormat('foreColor', e.target.value)}
-                      />
-                    </label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowColorPalette((v) => !v)}
+                        className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-300 transition-colors cursor-pointer flex items-center"
+                        title="Warna Font — pilih teks dulu lalu pilih warna"
+                      >
+                        <span className="relative flex items-center">
+                          <Type className="w-3.5 h-3.5" />
+                          <span className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-sm bg-red-600" />
+                        </span>
+                      </button>
+                      {showColorPalette && (
+                        <div className="absolute z-50 top-full mt-1 left-0 bg-white border border-slate-300 rounded-xl shadow-xl p-2 grid grid-cols-6 gap-1.5 w-max">
+                          {['#000000', '#ff0000', '#0000ff', '#008000', '#ff6600', '#800080', '#666666', '#0066cc', '#009900', '#cc0000', '#ffcc00', '#ffffff'].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              title={c}
+                              onClick={() => { execFormat('foreColor', c); setShowColorPalette(false); }}
+                              className="w-6 h-6 rounded-md border border-slate-400 hover:scale-110 transition-transform cursor-pointer"
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <span className="h-4 border-r border-slate-300 mx-1" />
 

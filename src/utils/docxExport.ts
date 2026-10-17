@@ -13,6 +13,8 @@ import {
 import { PuskesDoc, FaskesProfile } from '../types';
 import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
 import { exportHtmlToDocx } from './htmlToDocx';
+import { fillDocxOoxml, downloadBlob } from './docxOoxmlFill';
+import { htmlToDocxBlob } from './htmlToDocx';
 
 /** Properti halaman Word sesuai pilihan ukuran kertas pengguna. */
 function getPageProperties() {
@@ -32,7 +34,19 @@ function getPageProperties() {
 }
 
 export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Promise<void> {
-  // Dokumen berbasis template Word asli: konversi HTML menjadi .docx ASLI
+  // 1) Mode isi-template + file Word asli tersedia: isi [...] langsung di
+  //    berkas asli → 100% sama persis (tabel, kop, header/footer, gambar).
+  if (doc.originalDocxBase64 && doc.templateFillOoxml?.fills?.length) {
+    try {
+      const blob = await fillDocxOoxml(doc.originalDocxBase64, doc.templateFillOoxml.fills);
+      downloadBlob(blob, `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`);
+      return;
+    } catch (err) {
+      console.warn('OOXML fill gagal, pakai konverter HTML:', err);
+    }
+  }
+
+  // 2) Dokumen berbasis template Word asli: konversi HTML menjadi .docx ASLI
   // (tabel jadi tabel Word betulan) — tampil persis seperti lembar kerja.
   if (doc.originalDocxHtml && doc.originalDocxHtml.trim()) {
     await exportHtmlToDocx(doc);
@@ -379,6 +393,24 @@ export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Prom
 
 // Generate Docx Blob & FileName directly
 export async function generateDocxBlob(doc: PuskesDoc, profile: FaskesProfile): Promise<{ blob: Blob; fileName: string }> {
+  const ooxmlFileName = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`;
+
+  // Mode isi-template + file Word asli: pakai berkas asli (fidelity 100%)
+  if (doc.originalDocxBase64 && doc.templateFillOoxml?.fills?.length) {
+    try {
+      const blob = await fillDocxOoxml(doc.originalDocxBase64, doc.templateFillOoxml.fills);
+      return { blob, fileName: ooxmlFileName };
+    } catch (err) {
+      console.warn('OOXML fill gagal, pakai jalur biasa:', err);
+    }
+  }
+
+  // Dokumen template Word (HTML) tapi tanpa data OOXML: konversi HTML → blob
+  if (doc.originalDocxHtml && doc.originalDocxHtml.trim()) {
+    const blob = await htmlToDocxBlob(doc);
+    return { blob, fileName: ooxmlFileName };
+  }
+
   const sections: any[] = [];
 
   if (doc.useKop) {

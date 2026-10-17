@@ -30,7 +30,8 @@ import {
   Bot,
   CheckCircle2,
   HelpCircle,
-  ZoomIn
+  ZoomIn,
+  FolderOpen
 } from 'lucide-react';
 import { extractTextFromDocx, extractDocxAsHtml } from '../utils/docxReader';
 import { 
@@ -66,6 +67,8 @@ import {
   saveDocHistoryItem,
   clearDocHistory,
   DocHistoryItem,
+  getStoredDocuments,
+  deleteDocument,
   getMargins,
   saveMargins
 } from '../utils/storage';
@@ -179,7 +182,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     if (!genDocxRef.current) return;
     const html = genDocxRef.current.innerHTML;
     if (html !== activeDoc.originalDocxHtml) {
-      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html });
+      // Naskah diubah manual setelah generate → unduhan OOXML tidak valid lagi,
+      // pakai konverter HTML biasa.
+      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html, templateFillOoxml: undefined });
     }
   };
   // Zoom kertas generator (auto-fit seperti MS Word)
@@ -215,6 +220,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
 
   // Document History Log Modal
   const [isDocHistoryModalOpen, setIsDocHistoryModalOpen] = useState(false);
+  // Arsip dokumen tersimpan (tombol "Simpan") — bisa dibuka & diunduh .docx
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [archiveList, setArchiveList] = useState<PuskesDoc[]>([]);
   const [docHistoryList, setDocHistoryList] = useState<DocHistoryItem[]>(getStoredDocHistory());
 
   // Variable autocomplete state when typing {{ or {{}}
@@ -1060,7 +1068,17 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             const newSectionsFill = activeDoc.sections.length > 0
               ? activeDoc.sections.map((s, i) => (i === 0 ? { ...s, content: filledText } : s))
               : [{ id: 'sec_fill_0', title: 'Naskah Terisi', content: filledText }];
-            const filledDoc: PuskesDoc = { ...activeDoc, originalDocxHtml: filledHtml, sections: newSectionsFill };
+            // Simpan pasangan penanda→isian agar unduhan .docx bisa memakai
+            // file Word asli (fidelity 100%) bila base64-nya tersedia.
+            const ooxmlFills = prep.markers
+              .map((m) => ({ marker: m.original, text: String(fillRes.fills?.[String(m.id)] ?? '') }))
+              .filter((f) => f.marker);
+            const filledDoc: PuskesDoc = {
+              ...activeDoc,
+              originalDocxHtml: filledHtml,
+              sections: newSectionsFill,
+              templateFillOoxml: ooxmlFills.length > 0 ? { fills: ooxmlFills } : undefined,
+            };
             updateActiveTab({}, filledDoc);
             setGeneratedPreviewDoc(filledDoc);
             setProgressPercent(100);
@@ -1316,6 +1334,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
           ...activeDoc,
           title: fileNameTitle,
           originalDocxHtml: docxRes.html,
+          originalDocxBase64: docxRes.base64,
         });
         triggerNotice(`Naskah Word "${file.name}" berhasil dimuat!`);
       } catch (err: any) {
@@ -1500,6 +1519,15 @@ Catatan: ${item.notes || '-'}
           >
             <Save className="w-3.5 h-3.5" />
             <span>Simpan</span>
+          </button>
+
+          <button
+            onClick={() => { setArchiveList(getStoredDocuments()); setIsArchiveModalOpen(true); }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-xl transition-all active:scale-95 cursor-pointer"
+            title="Buka arsip dokumen tersimpan — unduh sebagai .docx"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>Arsip</span>
           </button>
         </div>
       </div>
@@ -3043,6 +3071,103 @@ Catatan: ${item.notes || '-'}
               <button
                 onClick={() => setIsDocHistoryModalOpen(false)}
                 className="px-4 py-1.5 font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 rounded-lg cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isArchiveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="bg-gradient-to-r from-purple-700 to-pink-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FolderOpen className="w-5 h-5 text-purple-200" />
+                <div>
+                  <h3 className="font-bold text-base">Arsip Dokumen Tersimpan</h3>
+                  <p className="text-xs text-purple-200">Dokumen yang disimpan via tombol "Simpan" — unduh sebagai Word (.docx)</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsArchiveModalOpen(false)}
+                className="p-1 text-white/80 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 divide-y divide-slate-100">
+              {archiveList.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Belum ada dokumen tersimpan. Klik "Simpan" pada dokumen untuk menyimpannya di sini.
+                </div>
+              ) : (
+                archiveList.map((saved) => (
+                  <div key={saved.id} className="py-3 flex items-center justify-between gap-3 hover:bg-slate-50 px-2 rounded-xl">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold text-xs text-slate-800 block truncate">
+                        {saved.title}
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                        <span className="font-mono bg-purple-100 text-purple-700 px-1.5 py-0.2 rounded font-bold">{saved.docType}</span>
+                        {saved.originalDocxHtml && (
+                          <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.2 rounded font-bold">Template Word</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await exportToDocx(saved, profile);
+                            triggerNotice(`"${saved.title}" berhasil diunduh sebagai .docx!`);
+                          } catch (err: any) {
+                            setErrorMsg(`Gagal mengunduh: ${err.message}`);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg cursor-pointer flex items-center gap-1"
+                        title="Unduh sebagai berkas Microsoft Word (.docx)"
+                      >
+                        <Download className="w-3 h-3" />
+                        .DOCX
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateActiveTab({}, saved);
+                          setIsArchiveModalOpen(false);
+                          triggerNotice(`"${saved.title}" dibuka di lembar kerja!`);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg cursor-pointer"
+                      >
+                        Buka
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Hapus "${saved.title}" dari arsip?`)) {
+                            deleteDocument(saved.id);
+                            setArchiveList(getStoredDocuments());
+                          }
+                        }}
+                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer"
+                        title="Hapus dari arsip"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="bg-slate-50 px-5 py-3 border-t border-slate-200 flex items-center justify-end">
+              <button
+                onClick={() => setIsArchiveModalOpen(false)}
+                className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 rounded-lg cursor-pointer"
               >
                 Tutup
               </button>

@@ -1,3 +1,5 @@
+import type { OoxmlFill } from '../utils/docxOoxmlFill';
+
 export type DocumentType = 'SOP' | 'SK' | 'KAK' | 'PEDOMAN' | 'PANDUAN' | 'CUSTOM';
 
 export type IlpKlaster = 
@@ -93,6 +95,9 @@ export interface PuskesDoc {
   rawFormattedText?: string;
   originalDocxHtml?: string;
   originalDocxBase64?: string;
+  /** Data isian [...] untuk unduhan via file Word asli (fidelity 100%).
+   *  Dihapus otomatis bila pengguna mengedit naskah setelah generate. */
+  templateFillOoxml?: { fills: OoxmlFill[] };
 }
 
 export interface CanvasElement {

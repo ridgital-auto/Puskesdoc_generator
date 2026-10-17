@@ -496,9 +496,13 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
  * Ekspor dokumen template Word (HTML) menjadi berkas .docx ASLI,
  * lalu unduh. Tampilan di Word mengikuti susunan tabel & format template.
  */
-export async function exportHtmlToDocx(doc: PuskesDoc): Promise<void> {
+export async function htmlToDocxBlob(doc: PuskesDoc): Promise<Blob> {
   const wordDoc = await convertHtmlToDocxDocument(doc);
-  const blob = await Packer.toBlob(wordDoc);
+  return Packer.toBlob(wordDoc);
+}
+
+export async function exportHtmlToDocx(doc: PuskesDoc): Promise<void> {
+  const blob = await htmlToDocxBlob(doc);
   const fileName = `${doc.docType || 'Dokumen'}_${safeFileName(doc.title)}.docx`;
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
