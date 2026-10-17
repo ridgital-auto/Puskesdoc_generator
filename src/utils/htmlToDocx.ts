@@ -25,6 +25,7 @@ import {
   HeadingLevel,
   ImageRun,
   BorderStyle,
+  TableLayoutType,
 } from 'docx';
 import type { PuskesDoc } from '../types';
 import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
@@ -187,20 +188,22 @@ function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElemen
   });
 }
 
-/** Baca lebar kolom relatif dari <colgroup> (dipakai fitur tarik kolom). */
-function columnPercents(table: HTMLTableElement, colCount: number): number[] | null {
+/** Baca fraksi lebar kolom (0..1) dari <colgroup> (dipakai fitur tarik kolom).
+ *  Bila tidak ada colgroup, kolom dibagi rata. */
+function columnFractions(table: HTMLTableElement, colCount: number): number[] {
+  const fracs: number[] = [];
   const cg = table.querySelector('colgroup');
-  if (!cg) return null;
-  const cols = Array.from(cg.querySelectorAll('col'));
-  if (cols.length === 0) return null;
-  const widths = cols.map((c) => parseFloat((c as HTMLElement).style.width) || 0);
-  const total = widths.reduce((a, b) => a + b, 0);
-  if (total <= 0) return null;
-  const pcts: number[] = [];
-  for (let i = 0; i < colCount; i++) {
-    pcts.push(((widths[i] || total / colCount) / total) * 100);
+  if (cg) {
+    const cols = Array.from(cg.querySelectorAll('col'));
+    const widths = cols.map((c) => parseFloat((c as HTMLElement).style.width) || 0);
+    const total = widths.reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      for (let i = 0; i < colCount; i++) fracs.push((widths[i] || total / colCount) / total);
+      return fracs;
+    }
   }
-  return pcts;
+  for (let i = 0; i < colCount; i++) fracs.push(1 / colCount);
+  return fracs;
 }
 
 const TABLE_BORDERS = {
@@ -212,7 +215,7 @@ const TABLE_BORDERS = {
   insideVertical: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
 };
 
-function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, LoadedImg>): Table {
+function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, LoadedImg>, widthDxa: number): Table {
   const rowEls = Array.from(table.rows) as HTMLTableRowElement[];
   // Hitung jumlah kolom maksimum (perhitungkan colspan)
   let colCount = 0;
@@ -222,7 +225,12 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
     colCount = Math.max(colCount, n);
   });
   if (colCount === 0) colCount = 1;
-  const pcts = columnPercents(table, colCount);
+  // Lebar tiap kolom dalam DXA (twips) — proporsional colgroup, pas selebar area konten.
+  const fracs = columnFractions(table, colCount);
+  const colDxa: number[] = fracs.map((f) => Math.max(1, Math.round(f * widthDxa)));
+  // Koreksi pembulatan agar total pas
+  const diff = widthDxa - colDxa.reduce((a, b) => a + b, 0);
+  colDxa[colDxa.length - 1] = Math.max(1, colDxa[colDxa.length - 1] + diff);
 
   const rows: TableRow[] = rowEls.map((tr) => {
     const cells: TableCell[] = [];
@@ -231,22 +239,20 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
       const td = cellNode as HTMLTableCellElement;
       const colSpan = td.colSpan > 1 ? td.colSpan : 1;
       const rowSpan = td.rowSpan > 1 ? td.rowSpan : 1;
+      let cellDxa = 0;
+      for (let k = 0; k < colSpan && colIdx + k < colDxa.length; k++) cellDxa += colDxa[colIdx + k];
       const children: Array<Paragraph | Table> = [];
-      convertBlockChildren(td, children, imgMap, fmtFromElement(td));
+      // Tabel bersarang: lebarnya selebar sel induknya
+      convertBlockChildren(td, children, imgMap, fmtFromElement(td), Math.max(1, cellDxa));
       if (children.length === 0) children.push(new Paragraph({}));
       const style = parseStyleAttr(td.getAttribute('style') || '');
       const bg = parseColor(style['background-color'] || style['background']);
-      // Lebar sel: dari proporsi colgroup bila ada
-      let cellPct = 0;
-      if (pcts) {
-        for (let k = 0; k < colSpan && colIdx + k < pcts.length; k++) cellPct += pcts[colIdx + k];
-      }
       cells.push(
         new TableCell({
           children,
           columnSpan: colSpan > 1 ? colSpan : undefined,
           rowSpan: rowSpan > 1 ? rowSpan : undefined,
-          width: cellPct > 0 ? { size: cellPct, type: WidthType.PERCENTAGE } : { size: 0, type: WidthType.AUTO },
+          width: { size: Math.max(1, cellDxa), type: WidthType.DXA },
           shading: bg ? { fill: bg } : undefined,
         })
       );
@@ -257,13 +263,15 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
 
   return new Table({
     rows,
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: widthDxa, type: WidthType.DXA },
+    columnWidths: colDxa,
+    layout: TableLayoutType.FIXED,
     borders: TABLE_BORDERS,
   });
 }
 
 /** Konversi anak-anak sebuah elemen menjadi blok docx (paragraf/tabel). */
-function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, imgMap: Map<HTMLImageElement, LoadedImg>, parentFmt: Fmt = {}): void {
+function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, imgMap: Map<HTMLImageElement, LoadedImg>, parentFmt: Fmt = {}, tableWidthDxa: number): void {
   Array.from(parent.childNodes).forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const t = collapseWs(node.nodeValue || '');
@@ -274,7 +282,7 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
     const el = node as HTMLElement;
     const tag = el.tagName.toLowerCase();
     if (tag === 'table') {
-      out.push(convertTable(el as HTMLTableElement, imgMap));
+      out.push(convertTable(el as HTMLTableElement, imgMap, tableWidthDxa));
       return;
     }
     if (tag === 'img') {
@@ -306,13 +314,13 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
     // Kontainer (section/article/div/...) SELALU diurai isinya — jangan pernah
     // dijadikan satu paragraf, karena tabel di dalamnya akan terbuang.
     if (CONTAINER_TAGS.test(tag)) {
-      convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) });
+      convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) }, tableWidthDxa);
       return;
     }
     if (PARA_TAGS.test(tag)) {
       // Paragraf yang mengandung tabel di dalamnya → uraikan sebagai blok
       if (el.querySelector('table')) {
-        convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) });
+        convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) }, tableWidthDxa);
         return;
       }
       const p = makeParagraph(el, tag, imgMap, '', parentFmt);
@@ -387,12 +395,13 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   root.querySelectorAll('style, script').forEach((el) => el.remove());
 
   const imgMap = await preloadImages(root);
-  const children: Array<Paragraph | Table> = [];
-  convertBlockChildren(root, children, imgMap);
-  if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
-
   const { width, height } = paperSizeToTwips(getPaperSize());
   const mg = getMargins();
+  // Lebar area konten (twips) = lebar kertas − margin kiri/kanan → tabel pas di halaman
+  const contentDxa = Math.max(1000, width - cmToTwips(mg.left) - cmToTwips(mg.right));
+  const children: Array<Paragraph | Table> = [];
+  convertBlockChildren(root, children, imgMap, {}, contentDxa);
+  if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
   return new Document({
     sections: [
       {
