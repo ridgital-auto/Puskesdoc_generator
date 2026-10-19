@@ -1155,6 +1155,8 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
           return;
         }
         // Tidak ada [...] → lanjut ke mode generate biasa di bawah
+        // (beri tahu pengguna agar tidak mengira mode isi-template yang jalan)
+        triggerNotice('Tidak ditemukan penanda [...] yang valid — generate biasa dijalankan.');
       }
 
       // Susun panduan struktur template agar hasil generate MENGIKUTI template pengguna
