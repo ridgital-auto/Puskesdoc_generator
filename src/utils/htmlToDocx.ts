@@ -198,7 +198,26 @@ function columnFractions(table: HTMLTableElement, colCount: number): number[] {
   const cg = table.querySelector('colgroup');
   if (cg) {
     const cols = Array.from(cg.querySelectorAll('col'));
-    const widths = cols.map((c) => parseFloat((c as HTMLElement).style.width) || 0);
+    const widths = cols.map((c) => parseCssLength((c as HTMLElement).style.width) || 0);
+    const total = widths.reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      for (let i = 0; i < colCount; i++) fracs.push((widths[i] || total / colCount) / total);
+      return fracs;
+    }
+  }
+  // Fallback: baca lebar dari sel baris pertama (docx-preview menaruh width inline di td)
+  const firstRow = table.rows[0];
+  if (firstRow) {
+    const cells = Array.from(firstRow.cells) as HTMLTableCellElement[];
+    const widths: number[] = [];
+    let colIdx = 0;
+    for (const td of cells) {
+      const w = parseCssLength(td.style.width) || parseFloat(td.getAttribute('width') || '') || 0;
+      const span = td.colSpan > 1 ? td.colSpan : 1;
+      for (let k = 0; k < span && colIdx < colCount; k++, colIdx++) {
+        widths[colIdx] = (w || 0) / span;
+      }
+    }
     const total = widths.reduce((a, b) => a + b, 0);
     if (total > 0) {
       for (let i = 0; i < colCount; i++) fracs.push((widths[i] || total / colCount) / total);
@@ -207,6 +226,21 @@ function columnFractions(table: HTMLTableElement, colCount: number): number[] {
   }
   for (let i = 0; i < colCount; i++) fracs.push(1 / colCount);
   return fracs;
+}
+
+/** Parse "123px", "50%", "2.5cm" → px (untuk % butuh konteks, kembalikan 0). */
+function parseCssLength(s: string): number {
+  if (!s) return 0;
+  const m = s.trim().match(/^([\d.]+)\s*(px|pt|cm|mm|in|%)?$/i);
+  if (!m) return 0;
+  const v = parseFloat(m[1]);
+  const unit = (m[2] || 'px').toLowerCase();
+  if (unit === 'px') return v;
+  if (unit === 'pt') return (v * 96) / 72;
+  if (unit === 'cm') return (v * 96) / 2.54;
+  if (unit === 'mm') return (v * 96) / 25.4;
+  if (unit === 'in') return v * 96;
+  return 0; // % → tidak bisa tanpa konteks
 }
 
 const TABLE_BORDERS = {
@@ -309,35 +343,79 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
 }
 
 /** Konversi anak-anak sebuah elemen menjadi blok docx (paragraf/tabel). */
+/** true bila elemen hanya berisi gambar (tanpa teks berarti) — untuk batching. */
+function isImageOnly(el: HTMLElement): boolean {
+  const imgs = el.querySelectorAll('img');
+  if (imgs.length === 0) return false;
+  const text = (el.textContent || '').replace(/\s+/g, '');
+  return text.length === 0;
+}
+
+/** Kumpulkan semua <img> dalam elemen image-only. */
+function collectImgs(el: HTMLElement): HTMLImageElement[] {
+  return Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
+}
+
 function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, imgMap: Map<HTMLImageElement, LoadedImg>, parentFmt: Fmt = {}, tableWidthDxa: number): void {
-  Array.from(parent.childNodes).forEach((node) => {
+  const nodes = Array.from(parent.childNodes);
+  for (let ni = 0; ni < nodes.length; ni++) {
+    const node = nodes[ni];
     if (node.nodeType === Node.TEXT_NODE) {
       const t = collapseWs(node.nodeValue || '');
       if (t.trim()) out.push(new Paragraph({ children: [new TextRun({ text: t })] }));
-      return;
+      continue;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
     const el = node as HTMLElement;
     const tag = el.tagName.toLowerCase();
     if (tag === 'table') {
       out.push(convertTable(el as HTMLTableElement, imgMap, tableWidthDxa));
-      return;
+      continue;
     }
-    if (tag === 'img') {
-      const loaded = imgMap.get(el as HTMLImageElement);
-      if (loaded) {
-        out.push(
-          new Paragraph({
-            children: [new ImageRun({ type: loaded.type, data: loaded.data, transformation: { width: loaded.width, height: loaded.height } })],
-            alignment: blockAlignment(el),
-          })
-        );
+    if (tag === 'img' || ((tag === 'p' || tag === 'div' || tag === 'span' || tag === 'figure') && isImageOnly(el))) {
+      // Batch gambar berurutan jadi SATU paragraf agar tetap sejajar (tidak bertumpuk)
+      const imgRuns: ImageRun[] = [];
+      let align: any = undefined;
+      let j = ni;
+      while (j < nodes.length) {
+        const n2 = nodes[j];
+        if (n2.nodeType !== Node.ELEMENT_NODE) {
+          // teks whitespace di antara gambar → lewati; teks berarti → berhenti
+          const tt = n2.nodeType === Node.TEXT_NODE ? (n2.nodeValue || '').replace(/\s+/g, '') : '';
+          if (tt) break;
+          j++;
+          continue;
+        }
+        const e2 = n2 as HTMLElement;
+        const t2 = e2.tagName.toLowerCase();
+        let imgs: HTMLImageElement[] | null = null;
+        if (t2 === 'img') imgs = [e2 as HTMLImageElement];
+        else if ((t2 === 'p' || t2 === 'div' || t2 === 'span' || t2 === 'figure') && isImageOnly(e2)) imgs = collectImgs(e2);
+        else break;
+        for (const im of imgs) {
+          const loaded = imgMap.get(im);
+          if (loaded) {
+            imgRuns.push(new ImageRun({ type: loaded.type, data: loaded.data, transformation: { width: loaded.width, height: loaded.height } }));
+            if (align === undefined) align = blockAlignment(im);
+          }
+        }
+        j++;
       }
-      return;
+      if (imgRuns.length > 0) {
+        // Pisahkan tiap gambar dengan spasi agar tidak menempel
+        const children: Array<TextRun | ImageRun> = [];
+        imgRuns.forEach((r, idx) => {
+          if (idx > 0) children.push(new TextRun({ text: '  ' }));
+          children.push(r);
+        });
+        out.push(new Paragraph({ children, alignment: align }));
+      }
+      ni = j - 1; // lewati yang sudah diproses
+      continue;
     }
     if (tag === 'br' || tag === 'hr') {
       out.push(new Paragraph({}));
-      return;
+      continue;
     }
     if (tag === 'ul' || tag === 'ol') {
       let idx = 0;
@@ -347,29 +425,29 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
         const p = makeParagraph(li as HTMLElement, 'li', imgMap, tag === 'ul' ? '•  ' : `${idx}. `, parentFmt);
         if (p) out.push(p);
       });
-      return;
+      continue;
     }
     // Kontainer (section/article/div/...) SELALU diurai isinya — jangan pernah
     // dijadikan satu paragraf, karena tabel di dalamnya akan terbuang.
     if (CONTAINER_TAGS.test(tag)) {
       convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) }, tableWidthDxa);
-      return;
+      continue;
     }
     if (PARA_TAGS.test(tag)) {
       // Paragraf yang mengandung tabel di dalamnya → uraikan sebagai blok
       if (el.querySelector('table')) {
         convertBlockChildren(el, out, imgMap, { ...parentFmt, ...fmtFromElement(el) }, tableWidthDxa);
-        return;
+        continue;
       }
       const p = makeParagraph(el, tag, imgMap, '', parentFmt);
       if (p) out.push(p);
-      return;
+      continue;
     }
     // Elemen inline di level blok (span, b, a, dsb) → bungkus jadi paragraf
     const runs: Array<TextRun | ImageRun> = [];
     inlineToRuns(el, fmtFromElement(el, parentFmt), imgMap, runs);
     if (runs.length > 0) out.push(new Paragraph({ children: runs, alignment: blockAlignment(el) }));
-  });
+  }
 }
 
 /** Muat semua <img> (data URL) agar dimensinya diketahui. */
