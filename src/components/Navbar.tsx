@@ -37,9 +37,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Brand Zone */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 via-fuchsia-500 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20">
-            <FileText className="w-4 h-4" />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="Logo Puskesdoc"
+            className="w-9 h-9 rounded-xl shadow-md shadow-emerald-500/20"
+          />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-base font-bold tracking-tight bg-gradient-to-r from-slate-900 via-purple-900 to-slate-800 bg-clip-text text-transparent">
