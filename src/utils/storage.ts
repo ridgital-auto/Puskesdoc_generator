@@ -123,6 +123,16 @@ export function getStoredDocumentTemplates(): DocumentTemplate[] {
             }
           }
         }
+        // MIGRASI: template yang disimpan pada jendela bug regenerasi .docx
+        // (2026-10-19 ~01:40–02:30 UTC) memiliki binary rusak (gambar bertumpuk).
+        // Kosongkan binary-nya agar HTML hasil edit yang jadi acuan.
+        for (const t of parsed as DocumentTemplate[]) {
+          if (!t.originalDocxBase64 || !t.updatedAt) continue;
+          if (t.updatedAt >= '2026-10-19T01:40:00' && t.updatedAt <= '2026-10-19T02:30:00') {
+            t.originalDocxBase64 = undefined;
+            repaired = true;
+          }
+        }
         if (repaired) {
           try { localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(parsed)); } catch { /* abaikan */ }
         }

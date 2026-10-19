@@ -476,6 +476,11 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         if (latest.updatedAt && latest.updatedAt !== activeDoc.sourceTemplateUpdatedAt) {
           setTemplateUpdateNotice(latest.name);
         }
+        // Sinkronisasi binary: bila template di storage sudah tidak punya .docx
+        // (mis. dibersihkan oleh migrasi), jangan pakai binary basi di dokumen aktif.
+        if (!latest.originalDocxBase64 && activeDoc.originalDocxBase64) {
+          updateActiveTab({}, { ...activeDoc, originalDocxBase64: undefined, docxBase64Ready: undefined, templateFillOoxml: undefined });
+        }
       }
     }
     // Dengarkan perubahan data (mis. template disimpan dari pengelola template)
