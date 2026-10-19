@@ -258,14 +258,27 @@ const TABLE_BORDERS = {
 
 function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, LoadedImg>, widthDxa: number): Table {
   const rowEls = Array.from(table.rows) as HTMLTableRowElement[];
-  // Hitung jumlah kolom maksimum (perhitungkan colspan)
+  // Sel yang disembunyikan (display:none) adalah lanjutan vMerge dari docx-preview —
+  // jangan hitung sebagai kolom agar grid tidak rusak.
+  const isHidden = (td: HTMLTableCellElement) => td.style.display === 'none';
+  // Hitung jumlah kolom: utamakan <colgroup>, lalu baris pertama (sel terlihat + colspan).
   let colCount = 0;
-  rowEls.forEach((tr) => {
+  const cg = table.querySelector('colgroup');
+  if (cg) colCount = cg.querySelectorAll('col').length;
+  if (!colCount && rowEls.length > 0) {
     let n = 0;
-    Array.from(tr.cells).forEach((td) => { n += (td as HTMLTableCellElement).colSpan || 1; });
-    colCount = Math.max(colCount, n);
-  });
+    Array.from(rowEls[0].cells).forEach((td) => {
+      if (!isHidden(td as HTMLTableCellElement)) n += (td as HTMLTableCellElement).colSpan || 1;
+    });
+    colCount = n;
+  }
   if (colCount === 0) colCount = 1;
+  // Deteksi tabel tak beraturan: jumlah sel terlihat bervariasi antar baris
+  // (mis. hasil vMerge docx-preview) → pakai AUTOFIT tanpa paksa grid.
+  const visibleCounts = rowEls.map((tr) =>
+    (Array.from(tr.cells) as HTMLTableCellElement[]).filter((td) => !isHidden(td)).length
+  );
+  const isIrregular = new Set(visibleCounts).size > 1;
   // Lebar tiap kolom dalam DXA — hanya pakai FIXED bila ada info lebar asli;
   // bila tidak, AUTOFIT agar Word menghitung dari konten (lebih rapi).
   const { fracs, hasRealWidths } = columnFractionsEx(table, colCount);
@@ -278,9 +291,29 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
   // dari sel di baris sebelumnya → diisi sel CONTINUE agar kolom tetap sejajar.
   const rowSpanRemain: number[] = new Array(colCount).fill(0);
 
-  const rows: TableRow[] = rowEls.map((tr) => {
+  const rows: TableRow[] = rowEls.map((tr, ri) => {
     const cells: TableCell[] = [];
-    const tdEls = Array.from(tr.cells) as HTMLTableCellElement[];
+    const tdEls = (Array.from(tr.cells) as HTMLTableCellElement[]).filter((td) => !isHidden(td));
+    // Tabel tak beraturan (vMerge): sederhanakan — sel berurutan tanpa merge vertikal.
+    // Semua konten tetap ada dan terbaca; lebih baik daripada grid rusak.
+    if (isIrregular) {
+      for (const td of tdEls) {
+        const colSpan = td.colSpan > 1 ? td.colSpan : 1;
+        const children: Array<Paragraph | Table> = [];
+        convertBlockChildren(td, children, imgMap, fmtFromElement(td), Math.max(1, widthDxa / Math.max(1, tdEls.length)));
+        if (children.length === 0) children.push(new Paragraph({}));
+        const style = parseStyleAttr(td.getAttribute('style') || '');
+        const bg = parseColor(style['background-color'] || style['background']);
+        cells.push(
+          new TableCell({
+            children,
+            columnSpan: colSpan > 1 ? colSpan : undefined,
+            shading: bg ? { fill: bg } : undefined,
+          })
+        );
+      }
+      return new TableRow({ children: cells });
+    }
     let tdIdx = 0;
     let colIdx = 0;
     while (colIdx < colCount) {
@@ -341,8 +374,8 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
   return new Table({
     rows,
     width: { size: widthDxa, type: WidthType.DXA },
-    columnWidths: hasRealWidths ? colDxa : undefined,
-    layout: hasRealWidths ? TableLayoutType.FIXED : TableLayoutType.AUTOFIT,
+    columnWidths: !isIrregular && hasRealWidths ? colDxa : undefined,
+    layout: !isIrregular && hasRealWidths ? TableLayoutType.FIXED : TableLayoutType.AUTOFIT,
     borders: TABLE_BORDERS,
   });
 }
@@ -377,11 +410,21 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
       out.push(convertTable(el as HTMLTableElement, imgMap, tableWidthDxa));
       continue;
     }
+    // Elemen kosong sisa pecahan parser (<p></p><span></span> dari <p><span><div><img>)
+    // → lewati agar tidak jadi paragraf blank dan tidak memutus batch gambar.
+    if ((tag === 'p' || tag === 'div' || tag === 'span') && el.querySelectorAll('img').length === 0 && (el.textContent || '').replace(/\s+/g, '').length === 0) {
+      continue;
+    }
     if (tag === 'img' || ((tag === 'p' || tag === 'div' || tag === 'span' || tag === 'figure') && isImageOnly(el))) {
       // Batch gambar berurutan jadi SATU paragraf agar tetap sejajar (tidak bertumpuk)
       const imgRuns: ImageRun[] = [];
       let align: any = undefined;
       let j = ni;
+      const isEmptyEl = (e: HTMLElement) => {
+        const t = e.tagName.toLowerCase();
+        if (t !== 'p' && t !== 'div' && t !== 'span') return false;
+        return e.querySelectorAll('img').length === 0 && (e.textContent || '').replace(/\s+/g, '').length === 0;
+      };
       while (j < nodes.length) {
         const n2 = nodes[j];
         if (n2.nodeType !== Node.ELEMENT_NODE) {
@@ -393,6 +436,8 @@ function convertBlockChildren(parent: Element, out: Array<Paragraph | Table>, im
         }
         const e2 = n2 as HTMLElement;
         const t2 = e2.tagName.toLowerCase();
+        // Elemen kosong (parser memecah <p><span><div><img>) → lewati, lanjut cari gambar
+        if (isEmptyEl(e2)) { j++; continue; }
         let imgs: HTMLImageElement[] | null = null;
         if (t2 === 'img') imgs = [e2 as HTMLImageElement];
         else if ((t2 === 'p' || t2 === 'div' || t2 === 'span' || t2 === 'figure') && isImageOnly(e2)) imgs = collectImgs(e2);
