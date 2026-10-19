@@ -193,7 +193,7 @@ function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElemen
 
 /** Baca fraksi lebar kolom (0..1) dari <colgroup> (dipakai fitur tarik kolom).
  *  Bila tidak ada colgroup, kolom dibagi rata. */
-function columnFractions(table: HTMLTableElement, colCount: number): number[] {
+function columnFractionsEx(table: HTMLTableElement, colCount: number): { fracs: number[]; hasRealWidths: boolean } {
   const fracs: number[] = [];
   const cg = table.querySelector('colgroup');
   if (cg) {
@@ -202,7 +202,7 @@ function columnFractions(table: HTMLTableElement, colCount: number): number[] {
     const total = widths.reduce((a, b) => a + b, 0);
     if (total > 0) {
       for (let i = 0; i < colCount; i++) fracs.push((widths[i] || total / colCount) / total);
-      return fracs;
+      return { fracs, hasRealWidths: true };
     }
   }
   // Fallback: baca lebar dari sel baris pertama (docx-preview menaruh width inline di td)
@@ -221,11 +221,15 @@ function columnFractions(table: HTMLTableElement, colCount: number): number[] {
     const total = widths.reduce((a, b) => a + b, 0);
     if (total > 0) {
       for (let i = 0; i < colCount; i++) fracs.push((widths[i] || total / colCount) / total);
-      return fracs;
+      return { fracs, hasRealWidths: true };
     }
   }
   for (let i = 0; i < colCount; i++) fracs.push(1 / colCount);
-  return fracs;
+  return { fracs, hasRealWidths: false };
+}
+
+function columnFractions(table: HTMLTableElement, colCount: number): number[] {
+  return columnFractionsEx(table, colCount).fracs;
 }
 
 /** Parse "123px", "50%", "2.5cm" → px (untuk % butuh konteks, kembalikan 0). */
@@ -262,8 +266,9 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
     colCount = Math.max(colCount, n);
   });
   if (colCount === 0) colCount = 1;
-  // Lebar tiap kolom dalam DXA (twips) — proporsional colgroup, pas selebar area konten.
-  const fracs = columnFractions(table, colCount);
+  // Lebar tiap kolom dalam DXA — hanya pakai FIXED bila ada info lebar asli;
+  // bila tidak, AUTOFIT agar Word menghitung dari konten (lebih rapi).
+  const { fracs, hasRealWidths } = columnFractionsEx(table, colCount);
   const colDxa: number[] = fracs.map((f) => Math.max(1, Math.round(f * widthDxa)));
   // Koreksi pembulatan agar total pas
   const diff = widthDxa - colDxa.reduce((a, b) => a + b, 0);
@@ -336,8 +341,8 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
   return new Table({
     rows,
     width: { size: widthDxa, type: WidthType.DXA },
-    columnWidths: colDxa,
-    layout: TableLayoutType.FIXED,
+    columnWidths: hasRealWidths ? colDxa : undefined,
+    layout: hasRealWidths ? TableLayoutType.FIXED : TableLayoutType.AUTOFIT,
     borders: TABLE_BORDERS,
   });
 }
