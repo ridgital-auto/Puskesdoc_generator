@@ -308,14 +308,11 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
         if (children.length === 0) children.push(new Paragraph({}));
         const style = parseStyleAttr(td.getAttribute('style') || '');
         const bg = parseColor(style['background-color'] || style['background']);
-        // Lebar dari style HTML agar proporsional (px → dxa)
-        const wPx = parseCssLength(style['width'] || '');
-        const wDxa = wPx > 0 ? Math.round(wPx * 15) : Math.max(1, Math.round(widthDxa / Math.max(1, allTds.length)));
         cells.push(
           new TableCell({
             children,
             columnSpan: colSpan > 1 ? colSpan : undefined,
-            width: { size: wDxa, type: WidthType.DXA },
+            // Tanpa width eksplisit: ikuti gridCols tabel (FIXED) agar Word tidak bingung
             shading: bg ? { fill: bg } : undefined,
           })
         );
