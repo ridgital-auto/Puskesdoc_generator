@@ -293,14 +293,18 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
 
   const rows: TableRow[] = rowEls.map((tr, ri) => {
     const cells: TableCell[] = [];
-    const tdEls = (Array.from(tr.cells) as HTMLTableCellElement[]).filter((td) => !isHidden(td));
+    const allTds = Array.from(tr.cells) as HTMLTableCellElement[];
+    const tdEls = allTds.filter((td) => !isHidden(td));
     // Tabel tak beraturan (vMerge): sederhanakan — sel berurutan tanpa merge vertikal.
     // Semua konten tetap ada dan terbaca; lebih baik daripada grid rusak.
     if (isIrregular) {
-      for (const td of tdEls) {
+      for (const td of allTds) {
         const colSpan = td.colSpan > 1 ? td.colSpan : 1;
         const children: Array<Paragraph | Table> = [];
-        convertBlockChildren(td, children, imgMap, fmtFromElement(td), Math.max(1, widthDxa / Math.max(1, tdEls.length)));
+        // Sel hidden (lanjutan vMerge) → sel kosong agar jumlah sel konsisten
+        if (!isHidden(td)) {
+          convertBlockChildren(td, children, imgMap, fmtFromElement(td), Math.max(1, widthDxa / Math.max(1, allTds.length)));
+        }
         if (children.length === 0) children.push(new Paragraph({}));
         const style = parseStyleAttr(td.getAttribute('style') || '');
         const bg = parseColor(style['background-color'] || style['background']);
