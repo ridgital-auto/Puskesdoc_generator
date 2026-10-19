@@ -221,11 +221,17 @@ function replaceRangeWith(
 export function applyFillsToTemplate(
   placeholderHtml: string,
   fills: Record<string, string>,
+  markers?: { id: number; original: string }[],
 ): { html: string; filledCount: number } {
+  const origById = new Map((markers || []).map((m) => [String(m.id), m.original]));
   let filledCount = 0;
   const html = placeholderHtml.replace(/\[\[FILL_(\d+)\]\]/g, (full, num: string) => {
     const raw = fills[num] ?? fills[String(parseInt(num, 10))];
-    if (!raw || !String(raw).trim()) return full; // kosongkan? biarkan placeholder bila AI tak mengisi
+    if (!raw || !String(raw).trim()) {
+      // AI tak mengisi → kembalikan teks penanda asli, jangan [[FILL_n]] mentah
+      const orig = origById.get(num) ?? origById.get(String(parseInt(num, 10)));
+      return orig ? `[${escapeHtml(orig)}]` : full;
+    }
     filledCount += 1;
     // Escape lalu jadikan baris baru sebagai <br> agar tampil rapi di sel tabel
     return escapeHtml(String(raw).trim()).replace(/\n/g, '<br>');

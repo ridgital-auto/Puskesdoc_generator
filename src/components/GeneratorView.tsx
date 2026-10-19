@@ -1138,7 +1138,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             // agar pagination SEJATI (konten mengalir ke halaman 2, 3, dst sesuai Word).
             let filledHtml: string;
             let filledBase64: string | undefined;
-            const { html: fallbackHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills);
+            const { html: fallbackHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills, prep.markers);
             if (activeDoc.originalDocxBase64 && ooxmlFills.length > 0) {
               try {
                 const filledBlob = await fillDocxOoxml(activeDoc.originalDocxBase64, ooxmlFills);
