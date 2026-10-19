@@ -59,6 +59,8 @@ import {
   saveMargins
 } from '../utils/storage';
 import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
+import { htmlToDocxBlob } from '../utils/htmlToDocx';
+import { blobToBase64 } from '../utils/docxOoxmlFill';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
 import { aiExecuteBracketPrompt } from '../lib/aiAgent';
 
@@ -1081,7 +1083,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
   };
 
   // Save from Editor
-  const handleSaveEditor = (e?: React.FormEvent) => {
+  const handleSaveEditor = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!editingTemplate || !editingTemplate.name.trim()) {
       triggerNotice('Nama template tidak boleh kosong', 'error');
@@ -1092,6 +1094,16 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     let templateToSave = { ...editingTemplate };
     if (docxEditorRef.current && docxDisplayMode === 'original_docx') {
       templateToSave.originalDocxHtml = docxEditorRef.current.innerHTML;
+      // PENTING: regenerasi berkas Word dari HTML yang diedit.
+      // Tanpa ini, originalDocxBase64 tetap berisi file LAMA sehingga
+      // bagian yang dihapus di editor muncul lagi saat generate.
+      try {
+        const blob = await htmlToDocxBlob(templateToSave as any);
+        templateToSave.originalDocxBase64 = await blobToBase64(blob);
+      } catch (err) {
+        console.warn('Regenerasi .docx template gagal, base64 dikosongkan:', err);
+        templateToSave.originalDocxBase64 = undefined;
+      }
     }
 
     saveDocumentTemplate(templateToSave);
