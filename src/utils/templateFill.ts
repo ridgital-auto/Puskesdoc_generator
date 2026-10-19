@@ -146,7 +146,42 @@ export function prepareTemplateForFill(
   return { placeholderHtml, plainTemplate, markers };
 }
 
-/** Ganti rentang karakter [startIdx, endIdx) pada peta text-node dengan teks baru. */
+/** Ambil kandidat judul utama template: heading pertama atau teks tengah-tebal pertama. */
+export function extractTemplateTitle(html: string): string {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  const heads = root.querySelectorAll('h1, h2, h3');
+  for (const el of Array.from(heads)) {
+    const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (t.length >= 4) return t.slice(0, 120);
+  }
+  const blocks = root.querySelectorAll('p, div, td, th');
+  for (const el of Array.from(blocks)) {
+    const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (t.length < 12 || t.length > 160) continue;
+    if (/^\d+[\.\)]\s/.test(t)) continue; // lewati penomoran
+    const styleAttr = (el as HTMLElement).getAttribute('style') || '';
+    const inner = (el as HTMLElement).innerHTML || '';
+    const centered = /text-align\s*:\s*center/i.test(styleAttr);
+    const bold = /<(b|strong)[\s>]/i.test(inner);
+    if (centered && bold) return t.slice(0, 120);
+  }
+  return '';
+}
+
+/** true bila dua judul dianggap mirip (salah satu mengandung yang lain / banyak kata sama). */
+export function titlesSimilar(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9\u00c0-\u024f ]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const wa = new Set(na.split(' ').filter((w) => w.length > 3));
+  const wb = new Set(nb.split(' ').filter((w) => w.length > 3));
+  if (wa.size === 0 || wb.size === 0) return true;
+  let same = 0;
+  wa.forEach((w) => { if (wb.has(w)) same += 1; });
+  return same / Math.max(wa.size, wb.size) >= 0.5;
+}
 function replaceRangeWith(
   map: { node: Text; start: number; end: number }[],
   startIdx: number,

@@ -535,6 +535,8 @@ export interface FillBracketsParams {
   /** Daftar petunjuk: id -> teks asli di dalam [...] */
   markers: { id: number; original: string }[];
   context?: string;
+  /** Judul dokumen yang diminta pengguna (dipakai untuk penanda judul) */
+  docTitle?: string;
   variables?: Record<string, any>;
   customAgentConfig?: CustomAgentConfig;
   signal?: AbortSignal;
@@ -560,6 +562,7 @@ DAFTAR BAGIAN YANG HARUS DIISI:
 ${markerList}
 
 Konteks pengguna: ${p.context || '-'}
+${p.docTitle ? `Judul dokumen yang diminta pengguna: "${p.docTitle}". Jika ada bagian bertanda [[FILL_n]] yang meminta judul/nama dokumen, WAJIB isi dengan judul ini persis.` : ''}
 Variabel faskes: ${JSON.stringify(p.variables || {})}
 
 TUGAS ANDA:

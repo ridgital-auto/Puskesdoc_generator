@@ -79,7 +79,7 @@ import { generateStructuredPrompt } from '../utils/promptGenerator';
 import { aiGenerateDocument, aiExecuteBracketPrompt, aiFillTemplateBrackets } from '../lib/aiAgent';
 import { AGENT_PRESETS } from '../lib/agentPresets';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
-import { prepareTemplateForFill, applyFillsToTemplate, htmlToPlainText } from '../utils/templateFill';
+import { prepareTemplateForFill, applyFillsToTemplate, htmlToPlainText, extractTemplateTitle, titlesSimilar } from '../utils/templateFill';
 import { PaperSizeSelector } from './PaperSizeSelector';
 import { GeneratedPreviewModal } from './GeneratedPreviewModal';
 import { TutorialModal } from './TutorialModal';
@@ -1094,6 +1094,21 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
       // Pakai HTML live dari editor (lebih segar dari state bila pengguna baru mengetik).
       const liveDocxHtml = getLiveDocxHtml();
       if (liveDocxHtml && liveDocxHtml.includes('[')) {
+        // Cek: judul yang diminta vs judul template — peringatkan bila beda jauh
+        const userTitle = (activeDoc.title || '').trim();
+        if (userTitle) {
+          const tplTitle = extractTemplateTitle(liveDocxHtml);
+          if (tplTitle && !titlesSimilar(userTitle, tplTitle)) {
+            const lanjut = window.confirm(
+              `Judul template yang dimuat:\n"${tplTitle}"\n\nJudul yang Anda minta:\n"${userTitle}"\n\nKeduanya berbeda jauh. Mode isi-template hanya mengisi bagian bertanda [...], judul tetap template tidak diubah.\n\nLanjutkan generate dengan template ini?`
+            );
+            if (!lanjut) {
+              setIsGenerating(false);
+              setProgressPercent(0);
+              return;
+            }
+          }
+        }
         const varMapFill: Record<string, any> = variables.reduce((acc: any, item) => {
           acc[item.key] = item.value;
           return acc;
@@ -1105,6 +1120,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             plainTemplate: prep.plainTemplate,
             markers: prep.markers,
             context: activeTab.contextInput,
+            docTitle: activeDoc.title,
             variables: varMapFill,
             customAgentConfig: activeCustomAgent,
             signal: abortControllerRef.current.signal,
