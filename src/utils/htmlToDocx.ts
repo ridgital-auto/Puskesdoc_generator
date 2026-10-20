@@ -54,6 +54,10 @@ interface LoadedImg {
 type DocxAlignment = (typeof AlignmentType)[keyof typeof AlignmentType];
 type DocxHeading = (typeof HeadingLevel)[keyof typeof HeadingLevel];
 
+// Counter untuk restart numbering: tiap kali ketemu "1." mulai list baru
+let numberingListIndex = 0;
+export function resetNumberingCounter() { numberingListIndex = 0; }
+
 function parseStyleAttr(styleStr: string): Record<string, string> {
   const out: Record<string, string> = {};
   (styleStr || '').split(';').forEach((part) => {
@@ -180,6 +184,15 @@ function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElemen
   const rawText = (el.textContent || '').trim();
   const numMatch = rawText.match(/^(\d+)\.\s+/);
   const useNumbering = !!numMatch;
+  // Tiap "1." mulai list baru agar numbering restart (tidak lanjut antar-bagian)
+  let listRef: string | undefined;
+  if (useNumbering) {
+    const num = parseInt(numMatch![1], 10);
+    if (num === 1) {
+      numberingListIndex = (numberingListIndex + 1) % 100;
+    }
+    listRef = `numbered-list-${numberingListIndex}`;
+  }
   // Strip awalan nomor dari teks agar tidak dobel (Word yang generate nomornya)
   let workEl: HTMLElement = el;
   if (useNumbering) {
@@ -213,7 +226,7 @@ function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElemen
     children: runs,
     heading: headingLevel(tag),
     alignment: blockAlignment(workEl),
-    numbering: useNumbering ? { reference: 'numbered-list', level: 0 } : undefined,
+    numbering: useNumbering && listRef ? { reference: listRef, level: 0 } : undefined,
     // Fallback indent bila numbering tak didukung
     indent: useNumbering ? undefined : undefined,
   });
@@ -323,14 +336,15 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
     const cells: TableCell[] = [];
     const allTds = Array.from(tr.cells) as HTMLTableCellElement[];
     const tdEls = allTds.filter((td) => !isHidden(td));
-    // Tabel tak beraturan (vMerge): sederhanakan — sel berurutan tanpa merge vertikal.
-    // Semua konten tetap ada dan terbaca; lebih baik daripada grid rusak.
+    // Tabel tak beraturan (vMerge): pertahankan merge vertikal dari HTML.
+    // Sel hidden = lanjutan vMerge → beri CONTINUE agar merge tetap utuh.
     if (isIrregular) {
       for (const td of allTds) {
         const colSpan = td.colSpan > 1 ? td.colSpan : 1;
+        const rowSpan = td.rowSpan > 1 ? td.rowSpan : 1;
+        const hidden = isHidden(td);
         const children: Array<Paragraph | Table> = [];
-        // Sel hidden (lanjutan vMerge) → sel kosong agar jumlah sel konsisten
-        if (!isHidden(td)) {
+        if (!hidden) {
           convertBlockChildren(td, children, imgMap, fmtFromElement(td), Math.max(1, widthDxa / Math.max(1, allTds.length)));
         }
         if (children.length === 0) children.push(new Paragraph({}));
@@ -340,7 +354,8 @@ function convertTable(table: HTMLTableElement, imgMap: Map<HTMLImageElement, Loa
           new TableCell({
             children,
             columnSpan: colSpan > 1 ? colSpan : undefined,
-            // Tanpa width eksplisit: ikuti gridCols tabel (FIXED) agar Word tidak bingung
+            rowSpan: rowSpan > 1 ? rowSpan : undefined,
+            verticalMerge: hidden ? VerticalMergeType.CONTINUE : (rowSpan > 1 ? VerticalMergeType.RESTART : undefined),
             shading: bg ? { fill: bg } : undefined,
           })
         );
@@ -589,6 +604,7 @@ function safeFileName(s: string): string {
  * agar bisa diuji dan dipakai ulang.
  */
 export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Document> {
+  resetNumberingCounter();
   const root = document.createElement('div');
   root.innerHTML = doc.originalDocxHtml || '';
   root.querySelectorAll('style, script').forEach((el) => el.remove());
@@ -653,24 +669,22 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
   return new Document({
     numbering: {
-      config: [
-        {
-          reference: 'numbered-list',
-          levels: [
-            {
-              level: 0,
-              format: LevelFormat.DECIMAL,
-              text: '%1.',
-              alignment: AlignmentType.LEFT,
-              style: {
-                paragraph: {
-                  indent: { left: 360, hanging: 260 },
-                },
+      config: Array.from({ length: 100 }, (_, i) => ({
+        reference: `numbered-list-${i}`,
+        levels: [
+          {
+            level: 0,
+            format: LevelFormat.DECIMAL,
+            text: '%1.',
+            alignment: AlignmentType.LEFT,
+            style: {
+              paragraph: {
+                indent: { left: 360, hanging: 260 },
               },
             },
-          ],
-        },
-      ],
+          },
+        ],
+      })),
     },
     sections: [
       {
