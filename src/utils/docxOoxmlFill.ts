@@ -60,13 +60,19 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   // Kosongkan node yang tertimpa selain pertama
   for (let i = 1; i < hits.length; i++) hits[i].el.textContent = '';
 
-  // Bersihkan isian AI: buang kurung siku pembungkus luar bila AI mengembalikannya
-  // (mis. "[isi konten...]" -> "isi konten..."). Jangan sentuh kurung di tengah.
-  let cleanReplacement = replacement.trim();
-  if (cleanReplacement.startsWith('[') && cleanReplacement.endsWith(']') && !cleanReplacement.slice(1, -1).includes('[')) {
-    cleanReplacement = cleanReplacement.slice(1, -1).trim();
-  }
-  const lines = cleanReplacement.split('\n');
+  // Bersihkan isian AI per baris:
+  // 1. Buang kurung siku di awal/akhir tiap baris ("[teks]" -> "teks", "4. [teks]" -> "4. teks").
+  // 2. Deteksi baris bernomor -> tulis ulang nomor dari 1 per isian (per sel).
+  let lines = replacement.split('\n').map((ln) => {
+    let s = ln.trim();
+    // Buang [ di awal (setelah nomor bila ada) dan ] di akhir
+    s = s.replace(/^(\d{1,3}[.)]\s+)?\[/, '$1').replace(/\]$/, '');
+    return s;
+  });
+  // Buang baris kosong di awal/akhir
+  while (lines.length > 0 && !lines[0].trim()) lines.shift();
+  while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+
   const pEl = findAncestor(first.el, 'w:p');
 
   if (lines.length === 1 || !pEl || !pEl.parentNode) {
