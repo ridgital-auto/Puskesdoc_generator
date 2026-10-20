@@ -32,6 +32,26 @@ let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 let gisLoadPromise: Promise<void> | null = null;
 
+// Pulihkan token dari penyimpanan lokal agar tidak login ulang tiap refresh
+const TOKEN_KEY = 'puskesdoc_drive_token';
+try {
+  const saved = localStorage.getItem(TOKEN_KEY);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (parsed.token && parsed.exp > Date.now()) {
+      cachedToken = parsed.token;
+      tokenExpiresAt = parsed.exp;
+    }
+  }
+} catch { /* abaikan */ }
+
+export function persistToken(): void {
+  try {
+    if (cachedToken) localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: cachedToken, exp: tokenExpiresAt }));
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* abaikan */ }
+}
+
 function loadGisScript(): Promise<void> {
   if (typeof window === 'undefined') return Promise.reject(new Error('Tidak ada window.'));
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -78,6 +98,7 @@ function requestToken(promptMode: '' | 'consent'): Promise<string | null> {
         cachedToken = resp.access_token;
         tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000 - 60_000;
         lastTokenError = null;
+        persistToken();
         done(cachedToken);
       } else {
         lastTokenError = (resp && resp.error) || 'unknown';
