@@ -105,8 +105,8 @@ function blockAlignment(el: HTMLElement): DocxAlignment | undefined {
   const t = style['text-align'];
   if (t === 'center') return AlignmentType.CENTER;
   if (t === 'right') return AlignmentType.RIGHT;
-  if (t === 'justify') return AlignmentType.JUSTIFIED;
-  return undefined;
+  // Default rata kiri: 'justify' dari template diubah jadi kiri agar rapi
+  return AlignmentType.LEFT;
 }
 
 function collapseWs(s: string): string {
@@ -184,10 +184,14 @@ function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElemen
     inlineToRuns(ch, base, imgMap, runs);
   });
   if (runs.length === 0) return null;
+  // Deteksi list berpenomoran ("1. ", "2. ") → indentasi gantung agar rapi
+  const textStart = (el.textContent || '').trim().slice(0, 10);
+  const isNumbered = /^\d+\.\s/.test(textStart);
   return new Paragraph({
     children: runs,
     heading: headingLevel(tag),
     alignment: blockAlignment(el),
+    indent: isNumbered ? { left: 360, hanging: 260 } : undefined,
   });
 }
 
