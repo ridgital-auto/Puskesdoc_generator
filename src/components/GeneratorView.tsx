@@ -184,9 +184,10 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
     if (!genDocxRef.current) return;
     const html = genDocxRef.current.innerHTML;
     if (html !== activeDoc.originalDocxHtml) {
-      // Naskah diubah manual setelah generate → berkas Word biner tidak valid lagi,
-      // unduhan pakai konverter HTML biasa.
-      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html, templateFillOoxml: undefined, originalDocxBase64: undefined, docxBase64Ready: undefined });
+      // JANGAN hapus originalDocxBase64: syncMarkersToDocx menyinkronkan [...]
+      // dari HTML baru ke .docx saat generate/unduh, jadi binary tetap valid.
+      // Hanya tandai binary hasil generate lama tidak valid lagi bila konten diubah.
+      updateActiveTab({}, { ...activeDoc, originalDocxHtml: html, docxBase64Ready: undefined });
     }
   };
   // Zoom kertas generator (auto-fit seperti MS Word)

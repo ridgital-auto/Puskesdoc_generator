@@ -50,6 +50,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.2 rounded-full bg-purple-100/80 text-purple-700 border border-purple-200">
                 ILP 2026
               </span>
+              <span className="text-[9px] font-mono text-slate-400" title="Versi build aplikasi">
+                v20okt-c
+              </span>
             </div>
             <p className="text-[11px] text-slate-500 font-normal">Tata Naskah Akreditasi Puskesmas</p>
           </div>
