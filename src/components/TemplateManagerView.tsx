@@ -60,7 +60,7 @@ import {
   getMargins,
   saveMargins
 } from '../utils/storage';
-import { extractDocxAsHtml, renderDocxToContainer, extractImagesInDocOrder, injectImageSrcs } from '../utils/docxReader';
+import { extractDocxAsHtml, renderDocxToContainer, getImageDataUrls, injectImageSrcs } from '../utils/docxReader';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
 import { aiExecuteBracketPrompt } from '../lib/aiAgent';
 
@@ -261,7 +261,7 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
         (async () => {
           try {
             const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-            const ordered = await extractImagesInDocOrder(buf.buffer as ArrayBuffer);
+            const ordered = await getImageDataUrls(buf.buffer as ArrayBuffer);
             injectImageSrcs(el, ordered);
           } catch (e) { console.warn('Suntik gambar template tersimpan gagal:', e); }
         })();

@@ -60,7 +60,13 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   // Kosongkan node yang tertimpa selain pertama
   for (let i = 1; i < hits.length; i++) hits[i].el.textContent = '';
 
-  const lines = replacement.split('\n');
+  // Bersihkan isian AI: buang kurung siku pembungkus luar bila AI mengembalikannya
+  // (mis. "[isi konten...]" -> "isi konten..."). Jangan sentuh kurung di tengah.
+  let cleanReplacement = replacement.trim();
+  if (cleanReplacement.startsWith('[') && cleanReplacement.endsWith(']') && !cleanReplacement.slice(1, -1).includes('[')) {
+    cleanReplacement = cleanReplacement.slice(1, -1).trim();
+  }
+  const lines = cleanReplacement.split('\n');
   const pEl = findAncestor(first.el, 'w:p');
 
   if (lines.length === 1 || !pEl || !pEl.parentNode) {
@@ -72,11 +78,12 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
     return true;
   }
 
-  // Deteksi list bernomor: hitung baris yang diawali "N." (toleran spasi).
-  // Jika >=2 baris bernomor -> perlakukan sebagai list, strip semua angka,
-  // terapkan numbering Word (tiap fill = numId sendiri -> restart dari 1).
-  const numRe = /^\s*(\d+)\.\s+/;
-  const stripNum = (s: string) => s.replace(/^\s*\d+\.\s+/, '');
+  // Deteksi list bernomor: SEBUAH baris diawali "N." (toleran spasi & kurung).
+  // Bila >=2 baris seperti itu -> list: strip angka AI, pakai numbering Word.
+  // PENTING: AI sering menomori LANJUT antar sel (6., 7., ...) — angka-angkanya
+  // dibuang, lalu numId baru membuat Word tampilkan 1,2,3 dari awal tiap sel.
+  const numRe = /^\s*\d{1,3}[.)]\s+/;
+  const stripNum = (s: string) => s.replace(/^\s*\d{1,3}[.)]\s+/, '');
   const numberedCount = lines.filter((ln) => numRe.test(ln)).length;
   const isNumberedList = lines.length > 1 && numberedCount >= 2;
   const listNumId = isNumberedList ? nextNumId() : undefined;

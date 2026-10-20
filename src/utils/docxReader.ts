@@ -100,7 +100,7 @@ export async function renderDocxToContainer(
   // Suntik src gambar asli (urut dokumen)
   try {
     const buf = source instanceof Blob ? await source.arrayBuffer() : source;
-    injectImageSrcs(container, await extractImagesInDocOrder(buf));
+    injectImageSrcs(container, await getImageDataUrls(buf));
   } catch (err) {
     console.warn('Gagal suntik gambar preview:', err);
   }
@@ -152,6 +152,14 @@ export async function extractImagesInDocOrder(arrayBuffer: ArrayBuffer): Promise
   }
 }
 
+/** Ambil dataUrl gambar: utamakan urutan dokumen; fallback ke semua media. */
+export async function getImageDataUrls(arrayBuffer: ArrayBuffer): Promise<string[]> {
+  const ordered = await extractImagesInDocOrder(arrayBuffer);
+  if (ordered.length > 0) return ordered;
+  const all = await extractImagesFromDocxZip(arrayBuffer);
+  return all.map((i) => i.dataUrl);
+}
+
 /** Pasangkan src base64 ke <img> hasil render yang src-nya kosong/blob. */
 export function injectImageSrcs(container: HTMLElement, orderedDataUrls: string[]): void {
   const imgs = Array.from(container.querySelectorAll('img')) as HTMLImageElement[];
@@ -186,7 +194,7 @@ export async function extractDocxAsHtml(file: File): Promise<DocxExtractionResul
       useBase64URL: false, // base64 bug di library; suntik manual di bawah
     });
     // Suntik src gambar asli (urut dokumen) karena <img> tanpa src dari renderer
-    injectImageSrcs(offscreen, await extractImagesInDocOrder(arrayBuffer));
+    injectImageSrcs(offscreen, await getImageDataUrls(arrayBuffer));
 
     const renderedHtml = offscreen.innerHTML;
     if (renderedHtml && renderedHtml.trim().length > 30) {
