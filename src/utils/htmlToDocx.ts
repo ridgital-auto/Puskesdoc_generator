@@ -29,6 +29,7 @@ import {
   VerticalMergeType,
   Header,
   Footer,
+  LevelFormat,
 } from 'docx';
 import type { PuskesDoc } from '../types';
 import { getPaperSize, paperSizeToTwips, getMargins, cmToTwips } from './storage';
@@ -175,23 +176,46 @@ function headingLevel(tag: string): DocxHeading | undefined {
 }
 
 function makeParagraph(el: HTMLElement, tag: string, imgMap: Map<HTMLImageElement, LoadedImg>, prefix = '', parentFmt: Fmt = {}): Paragraph | null {
+  // Deteksi list berpenomoran ("1. ", "2. ") → pakai numbering Word asli
+  const rawText = (el.textContent || '').trim();
+  const numMatch = rawText.match(/^(\d+)\.\s+/);
+  const useNumbering = !!numMatch;
+  // Strip awalan nomor dari teks agar tidak dobel (Word yang generate nomornya)
+  let workEl: HTMLElement = el;
+  if (useNumbering) {
+    workEl = el.cloneNode(true) as HTMLElement;
+    const numStr = numMatch![0];
+    // Hapus kemunculan pertama teks nomor dari text node
+    const walker = document.createTreeWalker(workEl, NodeFilter.SHOW_TEXT);
+    let node: Text | null;
+    let remaining = numStr;
+    while ((node = walker.nextNode() as Text | null) && remaining) {
+      const t = node.nodeValue || '';
+      if (t.startsWith(remaining)) {
+        node.nodeValue = t.slice(remaining.length);
+        remaining = '';
+      } else if (remaining.startsWith(t) && t.trim()) {
+        remaining = remaining.slice(t.length);
+        node.nodeValue = '';
+      }
+    }
+  }
   const runs: Array<TextRun | ImageRun> = [];
   if (prefix) runs.push(new TextRun({ text: prefix, bold: true }));
-  const base = fmtFromElement(el, parentFmt);
-  el.childNodes.forEach((ch) => {
+  const base = fmtFromElement(workEl, parentFmt);
+  workEl.childNodes.forEach((ch) => {
     // Tabel di dalam blok → dilewati di sini (ditangani sebagai blok tersendiri)
     if (ch.nodeType === 1 && (ch as HTMLElement).tagName.toLowerCase() === 'table') return;
     inlineToRuns(ch, base, imgMap, runs);
   });
   if (runs.length === 0) return null;
-  // Deteksi list berpenomoran ("1. ", "2. ") → indentasi gantung agar rapi
-  const textStart = (el.textContent || '').trim().slice(0, 10);
-  const isNumbered = /^\d+\.\s/.test(textStart);
   return new Paragraph({
     children: runs,
     heading: headingLevel(tag),
-    alignment: blockAlignment(el),
-    indent: isNumbered ? { left: 360, hanging: 260 } : undefined,
+    alignment: blockAlignment(workEl),
+    numbering: useNumbering ? { reference: 'numbered-list', level: 0 } : undefined,
+    // Fallback indent bila numbering tak didukung
+    indent: useNumbering ? undefined : undefined,
   });
 }
 
@@ -569,6 +593,26 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   root.innerHTML = doc.originalDocxHtml || '';
   root.querySelectorAll('style, script').forEach((el) => el.remove());
 
+  // Hapus logo bagian akhir: sisakan 2 gambar pertama (logo header),
+  // sisanya (logo di bagian akhir dokumen) dibuang agar tidak dobel.
+  const allImgs = Array.from(root.querySelectorAll('img')) as HTMLImageElement[];
+  if (allImgs.length > 2) {
+    for (let i = 2; i < allImgs.length; i++) {
+      const img = allImgs[i];
+      // Hapus pembungkus kosong yang tersisa (p/div/span hanya berisi img ini)
+      let el: HTMLElement | null = img as HTMLElement;
+      let parent: HTMLElement | null = null;
+      while (el && el !== root) {
+        parent = el.parentElement;
+        const isWrapper = /^(p|div|span|figure)$/i.test(el.tagName);
+        const hasOnlyImg = el.querySelectorAll('img').length <= 1 && (el.textContent || '').replace(/\s+/g, '').length === 0;
+        el.remove();
+        if (!isWrapper || !hasOnlyImg || !parent || parent === root) break;
+        el = parent;
+      }
+    }
+  }
+
   const imgMap = await preloadImages(root);
   const { width, height } = paperSizeToTwips(getPaperSize());
   const mg = getMargins();
@@ -608,6 +652,26 @@ export async function convertHtmlToDocxDocument(doc: PuskesDoc): Promise<Documen
   }
   if (children.length === 0) children.push(new Paragraph({ text: '(Dokumen kosong)' }));
   return new Document({
+    numbering: {
+      config: [
+        {
+          reference: 'numbered-list',
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: '%1.',
+              alignment: AlignmentType.LEFT,
+              style: {
+                paragraph: {
+                  indent: { left: 360, hanging: 260 },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
     sections: [
       {
         headers: headerPart ? { default: headerPart } : undefined,
