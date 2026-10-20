@@ -78,22 +78,46 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
     return true;
   }
 
-  // Deteksi list bernomor: SEBUAH baris diawali "N." (toleran spasi & kurung).
-  // Bila >=2 baris seperti itu -> list: strip angka AI, pakai numbering Word.
-  // PENTING: AI sering menomori LANJUT antar sel (6., 7., ...) — angka-angkanya
-  // dibuang, lalu numId baru membuat Word tampilkan 1,2,3 dari awal tiap sel.
-  // AMAN: hanya ubah TEKS (renumber 1,2,3...), tanpa sentuh numbering.xml
-  // agar file tidak corrupt ("unreadable content").
+  // Deteksi list bernomor: baris diawali "N." (toleran spasi & kurung).
+  // Bila >=2 baris seperti itu -> jadikan LIST NUMBERING Word betulan:
+  // strip angka teks AI, lalu pasang <w:numPr> dengan numId baru
+  // (tiap isian = list terpisah -> selalu mulai dari 1).
+  // Bila numbering tak tersedia (tak ada numbering.xml), fallback: renumber teks.
   const numRe = /^\s*\d{1,3}[.)]\s+/;
   const numberedIdx: number[] = [];
   lines.forEach((ln, i) => { if (numRe.test(ln)) numberedIdx.push(i); });
   const isNumberedList = lines.length > 1 && numberedIdx.length >= 2;
+  const listNumId = isNumberedList ? allocNumId() : undefined;
+  const useWordNumbering = isNumberedList && listNumId !== undefined;
   if (isNumberedList) {
-    let n = 1;
-    for (const i of numberedIdx) {
-      lines[i] = lines[i].replace(/^\s*\d{1,3}[.)]\s+/, `${n++}. `);
+    if (useWordNumbering) {
+      for (const i of numberedIdx) lines[i] = lines[i].replace(/^\s*\d{1,3}[.)]\s+/, '');
+    } else {
+      let n = 1;
+      for (const i of numberedIdx) lines[i] = lines[i].replace(/^\s*\d{1,3}[.)]\s+/, `${n++}. `);
     }
   }
+
+  // Bantu: beri/buang <w:numPr> pada pPr paragraf tertentu
+  const setNumPr = (p: Element, pPrEl: Element | null, numId: number | null): void => {
+    let target = pPrEl;
+    if (!target) {
+      target = xmlDoc.createElement('w:pPr');
+      p.insertBefore(target, p.firstChild);
+    }
+    const olds = target.getElementsByTagName('w:numPr');
+    for (let j = olds.length - 1; j >= 0; j--) olds[j].parentNode?.removeChild(olds[j]);
+    if (numId !== null) {
+      const numPr = xmlDoc.createElement('w:numPr');
+      const ilvlEl = xmlDoc.createElement('w:ilvl');
+      ilvlEl.setAttribute('w:val', '0');
+      const numIdEl = xmlDoc.createElement('w:numId');
+      numIdEl.setAttribute('w:val', String(numId));
+      numPr.appendChild(ilvlEl);
+      numPr.appendChild(numIdEl);
+      target.appendChild(numPr);
+    }
+  };
 
   // Baris pertama tetap di paragraf asal
   first.el.textContent = before + lines[0];
@@ -107,6 +131,11 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
   const parent = pEl.parentNode;
   let insertAfter: Node = pEl;
 
+  // Paragraf pertama: bila baris 0 termasuk list -> pasang numPr
+  if (useWordNumbering && numberedIdx.includes(0)) {
+    setNumPr(pEl, pPr || null, listNumId!);
+  }
+
   for (let i = 1; i < lines.length; i++) {
     const isLast = i === lines.length - 1;
     const newP = xmlDoc.createElement('w:p');
@@ -116,9 +145,13 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
       newPPr = pPrClone;
       newP.appendChild(pPrClone);
     }
-    if (newPPr) {
-      // Jangan warisi penomoran otomatis dari template (mencegah nomor lanjut
-      // antar sel). Nomor ditulis sebagai teks biasa yang sudah dirapikan.
+    // Atur numPr paragraf baru: anggota list -> numId sama; bukan -> tanpa numPr
+    if (useWordNumbering) {
+      setNumPr(newP, newPPr, numberedIdx.includes(i) ? listNumId! : null);
+      // setNumPr membuat pPr baru bila sebelumnya tak ada; catat referensinya
+      newPPr = newP.getElementsByTagName('w:pPr')[0] || newPPr;
+    } else if (newPPr) {
+      // Jangan warisi penomoran otomatis template
       const numPrs = newPPr.getElementsByTagName('w:numPr');
       for (let j = numPrs.length - 1; j >= 0; j--) {
         const np = numPrs[j];
@@ -165,6 +198,55 @@ function findAncestor(el: Element, tag: string): Element | null {
 }
 
 /**
+ * Siapkan definisi penomoran Word untuk isian AI.
+ * Menambah 1 abstractNum (desimal, struktur PERSIS seperti template asli:
+ * lvl hanya berisi start/numFmt/lvlText/lvlJc/pPr — tanpa elemen liar)
+ * + N <w:num>, lalu kembalikan daftar numId yang boleh dipakai.
+ */
+async function ensureNumbering(zip: JSZip, count: number): Promise<number[]> {
+  const numFile = zip.file('word/numbering.xml');
+  if (!numFile) return [];
+  let nxml = await numFile.async('string');
+  if (!nxml.includes('</w:numbering>')) return [];
+
+  const absIds = [...nxml.matchAll(/w:abstractNumId="(\d+)"/g)].map((m) => parseInt(m[1], 10));
+  const numIds = [...nxml.matchAll(/<w:num w:numId="(\d+)"/g)].map((m) => parseInt(m[1], 10));
+  const newAbs = (absIds.length ? Math.max(...absIds) : 0) + 1;
+  let nextNum = (numIds.length ? Math.max(...numIds) : 0) + 1;
+
+  const lvl =
+    '<w:lvl w:ilvl="0" w:tplc="04090019" w:xfib="1">' +
+    '<w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
+    '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="360"/></w:pPr></w:lvl>';
+  const absEl =
+    `<w:abstractNum w:abstractNumId="${newAbs}">` +
+    '<w:nsid w:val="713259D5"/><w:multiLevelType w:val="singleLevel"/>' +
+    '<w:tmpl w:val="04090019"/>' + lvl + '</w:abstractNum>';
+
+  const result: number[] = [];
+  let numEls = '';
+  for (let i = 0; i < count; i++) {
+    const id = nextNum++;
+    result.push(id);
+    numEls += `<w:num w:numId="${id}"><w:abstractNumId w:val="${newAbs}"/></w:num>`;
+  }
+  // abstractNum WAJIB sebelum semua <w:num>
+  const firstNumIdx = nxml.indexOf('<w:num ');
+  if (firstNumIdx >= 0) nxml = nxml.slice(0, firstNumIdx) + absEl + nxml.slice(firstNumIdx);
+  else nxml = nxml.replace('</w:numbering>', absEl + '</w:numbering>');
+  nxml = nxml.replace('</w:numbering>', numEls + '</w:numbering>');
+  zip.file('word/numbering.xml', nxml);
+  return result;
+}
+
+// Alokasi numId per pemanggilan fillDocxOoxml (tiap list = numId sendiri)
+let numberingPool: number[] = [];
+let numberingIdx = 0;
+function allocNumId(): number | undefined {
+  return numberingIdx < numberingPool.length ? numberingPool[numberingIdx++] : undefined;
+}
+
+/**
  * Isi semua penanda [...] di dalam berkas .docx (base64) sesuai urutan.
  * Mengembalikan Blob .docx yang siap diunduh.
  */
@@ -182,6 +264,8 @@ export async function fillDocxOoxml(base64: string, fills: OoxmlFill[]): Promise
 
   const body = xmlDoc.getElementsByTagName('w:body')[0];
   if (!body) throw new Error('Isi dokumen (w:body) tidak ditemukan.');
+  numberingPool = await ensureNumbering(zip, 40);
+  numberingIdx = 0;
   const paragraphs = Array.from(body.getElementsByTagName('w:p'));
 
   let searchFrom = 0; // indeks paragraf mulai pencarian (penanda dicari berurutan)
