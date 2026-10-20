@@ -208,6 +208,9 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const [progressPercent, setProgressPercent] = useState(0);
   const [progressStepText, setProgressStepText] = useState('Menghubungkan ke AI...');
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Mode generate: 'fill-only' = AI hanya mengisi [...], bagian lain tidak diubah;
+  // 'general' = AI boleh menulis ulang seluruh dokumen (perilaku lama).
+  const [generateMode, setGenerateMode] = useState<'fill-only' | 'general'>('fill-only');
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
@@ -1098,6 +1101,13 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
       // bagian bertanda itu, struktur/tabel/format template tidak diubah sama sekali.
       // Pakai HTML live dari editor (lebih segar dari state bila pengguna baru mengetik).
       const liveDocxHtml = getLiveDocxHtml();
+      // Mode fill-only: wajib ada [...] — bila tidak ada, tolak generate umum.
+      if (generateMode === 'fill-only' && (!liveDocxHtml || !liveDocxHtml.includes('['))) {
+        setErrorMsg('Mode "Hanya isi [...]" aktif, tetapi template tidak mengandung penanda [. Tambahkan [...] pada bagian yang ingin diisi AI, atau pilih mode "Umum (semua)".');
+        setIsGenerating(false);
+        setProgressPercent(0);
+        return;
+      }
       if (liveDocxHtml && liveDocxHtml.includes('[')) {
         // Cek: judul yang diminta vs judul template — peringatkan bila beda jauh
         const userTitle = (activeDoc.title || '').trim();
@@ -1175,7 +1185,13 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
           }
           return;
         }
-        // Tidak ada [...] → lanjut ke mode generate biasa di bawah
+        // Tidak ada [...] → lanjut ke mode generate biasa di bawah, KECUALI mode fill-only
+        if (generateMode === 'fill-only') {
+          setErrorMsg('Tidak ditemukan penanda [...] yang valid di template. Tambahkan [...] pada bagian yang ingin diisi AI, atau pilih mode "Umum (semua)".');
+          setIsGenerating(false);
+          setProgressPercent(0);
+          return;
+        }
         // (beri tahu pengguna agar tidak mengira mode isi-template yang jalan)
         triggerNotice('Tidak ditemukan penanda [...] yang valid — generate biasa dijalankan.');
       }
@@ -2350,14 +2366,35 @@ Catatan: ${item.notes || '-'}
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={handleGenerateAI}
-                  disabled={!activeDoc.title.trim()}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 rounded-xl shadow-md shadow-purple-500/20 transition-all active:scale-95 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-fuchsia-200" />
-                  <span>Generate Otomatis via AI ({totalTargetPages} Halaman)</span>
-                </button>
+                <>
+                  {/* Pilihan mode generate */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setGenerateMode('fill-only')}
+                      title="AI hanya mengisi bagian bertanda [...]; struktur, tabel & teks lain tidak diubah"
+                      className={`py-2 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${generateMode === 'fill-only' ? 'bg-white shadow text-purple-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      ✏️ Hanya isi [...]
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenerateMode('general')}
+                      title="AI boleh menulis ulang seluruh dokumen (seperti biasa)"
+                      className={`py-2 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${generateMode === 'general' ? 'bg-white shadow text-purple-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      ✨ Umum (semua)
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleGenerateAI}
+                    disabled={!activeDoc.title.trim()}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 rounded-xl shadow-md shadow-purple-500/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-fuchsia-200" />
+                    <span>Generate Otomatis via AI ({totalTargetPages} Halaman)</span>
+                  </button>
+                </>
               )}
 
               <button
