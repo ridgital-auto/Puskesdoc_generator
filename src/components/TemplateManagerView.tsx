@@ -133,6 +133,9 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
   const imgBoxRef = useRef<HTMLDivElement | null>(null);
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
   const mediaDocxUploadRef = useRef<HTMLInputElement | null>(null);
+  // Lampirkan file .docx asli ke kartu template (tanpa buka editor)
+  const attachDocxRef = useRef<HTMLInputElement | null>(null);
+  const [attachTargetId, setAttachTargetId] = useState<string | null>(null);
 
   // Media Library Integration in Editor & New Template Selection
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
@@ -1131,6 +1134,24 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     triggerNotice(`Template "${name}" berhasil dihapus.`);
   };
 
+  // Lampirkan file .docx asli ke template (tanpa mengubah isi/editan user).
+  // Hanya binary-nya yang diperbarui agar generate memakai jalur OOXML (kop 100% utuh).
+  const handleAttachDocx = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const tplId = attachTargetId;
+    e.target.value = '';
+    if (!file || !tplId) return;
+    const tpl = getStoredDocumentTemplates().find((t) => t.id === tplId);
+    if (!tpl) return;
+    extractDocxAsHtml(file).then((docxResult) => {
+      saveDocumentTemplate({ ...tpl, originalDocxBase64: docxResult.base64, updatedAt: new Date().toISOString() });
+      setTemplates(getStoredDocumentTemplates());
+      triggerNotice(`File .docx dilampirkan ke "${tpl.name}". Kop dijamin 100% utuh saat generate.`);
+    }).catch((err: any) => {
+      triggerNotice(`Gagal membaca berkas Word: ${err.message}`, 'error');
+    });
+  };
+
   const handleSetDefault = (id: string) => {
     setDefaultDocumentTemplate(id);
     const updated = getStoredDocumentTemplates();
@@ -1401,6 +1422,14 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
         </div>
       </div>
 
+      {/* Input tersembunyi: lampirkan file .docx asli ke kartu template */}
+      <input
+        ref={attachDocxRef}
+        type="file"
+        accept=".docx"
+        onChange={handleAttachDocx}
+        className="hidden"
+      />
       {/* Template Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredTemplates.map((tpl) => (
@@ -1425,9 +1454,24 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                       Word Asli
                     </span>
                   )}
+                  {!tpl.originalDocxBase64 && tpl.originalDocxHtml && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-100 text-red-700" title="Belum ada file .docx asli terlampir — kop bisa rusak saat generate. Klik ikon klip untuk melampirkan.">
+                      ⚠️ Tanpa File .docx
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {!tpl.originalDocxBase64 && (
+                    <button
+                      type="button"
+                      onClick={() => { setAttachTargetId(tpl.id); setTimeout(() => attachDocxRef.current?.click(), 0); }}
+                      className="p-1 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50"
+                      title="Lampirkan file .docx asli agar kop 100% utuh saat generate"
+                    >
+                      <FileUp className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleSetDefault(tpl.id)}

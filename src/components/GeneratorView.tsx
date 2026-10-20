@@ -2393,6 +2393,16 @@ Catatan: ${item.notes || '-'}
                 </div>
               ) : (
                 <>
+                  {/* Peringatan: tanpa file .docx asli, kop bisa rusak */}
+                  {!activeDoc.originalDocxBase64 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-xl bg-red-50 border border-red-200 text-[11px] text-red-800">
+                      <span className="mt-0.5">⚠️</span>
+                      <span>
+                        Dokumen ini <b>belum punya file .docx asli</b> — kop tabel bisa rusak saat generate.
+                        Lampirkan file .docx di <b>Kelola Template</b> (klik ikon <b>⬆️</b> pada kartu template).
+                      </span>
+                    </div>
+                  )}
                   {/* Pilihan mode generate */}
                   <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                     <button
