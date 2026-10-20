@@ -10,6 +10,9 @@ import { PromptModal } from './components/PromptModal';
 import { CloudIntegrationModal } from './components/CloudIntegrationModal';
 import { HelpModal } from './components/HelpModal';
 import { addDataChangeListener } from './utils/storage';
+
+// Versi build aplikasi — harus sama dengan public/app-version.json
+const APP_VERSION = 'v20okt-c';
 import { scheduleAutoBackup } from './services/driveSync';
 import { LoginModal } from './components/LoginModal';
 import { LoginScreen } from './components/LoginScreen';
@@ -36,6 +39,23 @@ export default function App() {
     const onLogout = () => setGateLocked(true);
     window.addEventListener('puskesdoc:logout', onLogout);
     return () => window.removeEventListener('puskesdoc:logout', onLogout);
+  }, []);
+
+  // Deteksi versi baru: cocokkan versi build dengan app-version.json di server
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.BASE_URL}app-version.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && data?.version && data.version !== APP_VERSION) setUpdateAvailable(true);
+      } catch { /* abaikan */ }
+    };
+    check();
+    const iv = setInterval(check, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(iv); };
   }, []);
   const [profile, setProfile] = useState<FaskesProfile>(getStoredProfile());
   const [variables, setVariables] = useState<VariableItem[]>(getStoredVariables());
@@ -194,6 +214,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen holo-gradient flex flex-col font-sans">
+      {/* Banner update versi baru */}
+      {updateAvailable && (
+        <div className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-3 text-sm font-semibold sticky top-0 z-50">
+          <span>🔄 Versi baru aplikasi tersedia!</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="bg-white text-amber-700 px-3 py-1 rounded-lg text-xs font-bold hover:bg-amber-50 active:scale-95 transition-all cursor-pointer"
+          >
+            Klik untuk Memperbarui
+          </button>
+        </div>
+      )}
       {/* Top Navigation */}
       <Navbar
         activeTab={activeTab}
