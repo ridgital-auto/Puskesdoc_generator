@@ -95,7 +95,72 @@ export async function renderDocxToContainer(
     breakPages: true,
     renderHeaders: true,
     renderFooters: true,
-    useBase64URL: true,
+    useBase64URL: false, // base64 bug di library; suntik manual di bawah
+  });
+  // Suntik src gambar asli (urut dokumen)
+  try {
+    const buf = source instanceof Blob ? await source.arrayBuffer() : source;
+    injectImageSrcs(container, await extractImagesInDocOrder(buf));
+  } catch (err) {
+    console.warn('Gagal suntik gambar preview:', err);
+  }
+}
+
+/**
+ * Ekstrak gambar dalam URUTAN DOKUMEN (sesuai kemunculan <a:blip r:embed>
+ * di document.xml + header*.xml), agar bisa dipasangkan ke <img> hasil
+ * render docx-preview yang src-nya kosong (bug useBase64URL di library).
+ */
+export async function extractImagesInDocOrder(arrayBuffer: ArrayBuffer): Promise<string[]> {
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    // Peta nama file -> dataUrl
+    const dataByPath = new Map<string, string>();
+    const mediaFiles = Object.keys(zip.files).filter((f) => /^word\/media\//i.test(f) && !zip.files[f].dir);
+    for (const fn of mediaFiles) {
+      const b64 = await zip.files[fn].async('base64');
+      const ext = fn.split('.').pop()?.toLowerCase() || 'png';
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : ext === 'webp' ? 'image/webp' : 'image/png';
+      dataByPath.set(fn.replace(/^word\//, ''), `data:${mime};base64,${b64}`);
+    }
+    // Urutan: document.xml dulu, lalu header/footer
+    const ordered: string[] = [];
+    const partNames = Object.keys(zip.files).filter((f) => /^word\/(document|header\d+|footer\d+)\.xml$/i.test(f));
+    partNames.sort((a, b) => (a.includes('document') ? -1 : b.includes('document') ? 1 : a.localeCompare(b)));
+    for (const part of partNames) {
+      const xml = await zip.files[part].async('string');
+      const relsName = part.replace('word/', 'word/_rels/') + '.rels';
+      const relsFile = zip.files[relsName];
+      if (!relsFile) continue;
+      const relsXml = await relsFile.async('string');
+      const relMap = new Map<string, string>();
+      for (const m of relsXml.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
+        relMap.set(m[1], m[2].replace(/^\.\.\//, '').replace(/^\//, ''));
+      }
+      for (const m of xml.matchAll(/r:embed="([^"]+)"/g)) {
+        const target = relMap.get(m[1]);
+        if (target) {
+          const url = dataByPath.get(target) || dataByPath.get('media/' + target.split('/').pop());
+          if (url) ordered.push(url);
+        }
+      }
+    }
+    return ordered;
+  } catch (err) {
+    console.warn('Gagal ekstrak gambar urut dokumen:', err);
+    return [];
+  }
+}
+
+/** Pasangkan src base64 ke <img> hasil render yang src-nya kosong/blob. */
+export function injectImageSrcs(container: HTMLElement, orderedDataUrls: string[]): void {
+  const imgs = Array.from(container.querySelectorAll('img')) as HTMLImageElement[];
+  imgs.forEach((img, i) => {
+    const src = img.getAttribute('src') || '';
+    // src kosong atau blob sementara → ganti dengan data URL permanen
+    if ((!src || src.startsWith('blob:')) && orderedDataUrls[i]) {
+      img.setAttribute('src', orderedDataUrls[i]);
+    }
   });
 }
 
@@ -118,8 +183,10 @@ export async function extractDocxAsHtml(file: File): Promise<DocxExtractionResul
       breakPages: true,
       renderHeaders: true,
       renderFooters: true,
-      useBase64URL: true,
+      useBase64URL: false, // base64 bug di library; suntik manual di bawah
     });
+    // Suntik src gambar asli (urut dokumen) karena <img> tanpa src dari renderer
+    injectImageSrcs(offscreen, await extractImagesInDocOrder(arrayBuffer));
 
     const renderedHtml = offscreen.innerHTML;
     if (renderedHtml && renderedHtml.trim().length > 30) {
