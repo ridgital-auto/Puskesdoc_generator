@@ -72,10 +72,13 @@ function replaceRange(xmlDoc: XMLDocument, nodes: TextNodeMap[], start: number, 
     return true;
   }
 
-  // Deteksi list bernomor: baris-baris diawali "1.", "2.", dst.
-  const numRe = /^(\d+)\.\s+/;
-  const isNumberedList = lines.length > 1 && numRe.test(lines[0].trim()) && numRe.test(lines[1].trim());
+  // Deteksi list bernomor: hitung baris yang diawali "N." (toleran spasi).
+  // Jika >=2 baris bernomor -> perlakukan sebagai list, strip semua angka,
+  // terapkan numbering Word (tiap fill = numId sendiri -> restart dari 1).
+  const numRe = /^\s*(\d+)\.\s+/;
   const stripNum = (s: string) => s.replace(/^\s*\d+\.\s+/, '');
+  const numberedCount = lines.filter((ln) => numRe.test(ln)).length;
+  const isNumberedList = lines.length > 1 && numberedCount >= 2;
   const listNumId = isNumberedList ? nextNumId() : undefined;
 
   // Fungsi bantu: buat elemen <w:numPr> untuk paragraf
