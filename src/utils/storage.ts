@@ -162,6 +162,18 @@ export function deleteDocumentTemplate(templateId: string): void {
   localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(templates));
 }
 
+/** Jadikan satu template sebagai default (lainnya dibatalkan default-nya). */
+export function setDefaultDocumentTemplate(templateId: string): void {
+  const templates = getStoredDocumentTemplates().map((t) => ({ ...t, isDefault: t.id === templateId }));
+  localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify(templates));
+  notifyDataChanged();
+}
+
+/** Ambil template default (bila ada). */
+export function getDefaultDocumentTemplate(): DocumentTemplate | undefined {
+  return getStoredDocumentTemplates().find((t) => t.isDefault);
+}
+
 export function resetDocumentTemplates(): void {
   localStorage.setItem(DOCUMENT_TEMPLATES_KEY, JSON.stringify([]));
 }

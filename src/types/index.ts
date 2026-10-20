@@ -167,6 +167,8 @@ export interface DocumentTemplate {
   createdAt: string;
   updatedAt: string;
   isBuiltIn?: boolean;
+  /** Template default: otomatis terpilih saat Generator dibuka. */
+  isDefault?: boolean;
 }
 
 export interface MediaItem {

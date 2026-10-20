@@ -230,6 +230,7 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
   const [archiveList, setArchiveList] = useState<PuskesDoc[]>([]);
   // Lacak template pustaka yang dimuat + notifikasi bila ada versi baru
   const appliedTemplateRef = useRef<{ id: string; updatedAt: string } | null>(null);
+  const defaultAppliedRef = useRef(false);
   const [templateUpdateNotice, setTemplateUpdateNotice] = useState<string | null>(null);
   const [docHistoryList, setDocHistoryList] = useState<DocHistoryItem[]>(getStoredDocHistory());
 
@@ -484,6 +485,26 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
         if (!latest.originalDocxBase64 && activeDoc.originalDocxBase64) {
           updateActiveTab({}, { ...activeDoc, originalDocxBase64: undefined, docxBase64Ready: undefined, templateFillOoxml: undefined });
         }
+      }
+    } else if (!defaultAppliedRef.current) {
+      // Dokumen baru tanpa template: terapkan template default bila ada
+      defaultAppliedRef.current = true;
+      const def = freshTemplates.find((t) => t.isDefault);
+      if (def && def.originalDocxBase64) {
+        // Terapkan tanpa menimpa judul bila user sudah mengetik
+        updateActiveTab({}, {
+          ...activeDoc,
+          title: activeDoc.title && activeDoc.title !== 'Dokumen Baru' ? activeDoc.title : def.name,
+          docType: (['SOP', 'SK', 'KAK', 'PEDOMAN', 'PANDUAN'].includes(def.docType) ? def.docType : 'CUSTOM') as DocumentType,
+          sections: def.sections.map((s, idx) => ({ id: s.id || `sec_tpl_${idx}`, title: s.title, content: s.content })),
+          useKop: def.useKopDefault ?? true,
+          kopMode: def.kopMode || 'manual',
+          originalDocxHtml: def.originalDocxHtml,
+          originalDocxBase64: def.originalDocxBase64,
+          sourceTemplateId: def.id,
+          sourceTemplateUpdatedAt: def.updatedAt,
+        });
+        appliedTemplateRef.current = { id: def.id, updatedAt: def.updatedAt };
       }
     }
     // Dengarkan perubahan data (mis. template disimpan dari pengelola template)

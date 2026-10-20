@@ -43,13 +43,15 @@ import {
   Image as ImageIcon,
   Folder,
   Eye,
-  Variable
+  Variable,
+  Star
 } from 'lucide-react';
 import { DocumentTemplate, DocumentSection, DocumentType, FaskesProfile, MediaItem, VariableItem } from '../types';
 import { 
   getStoredDocumentTemplates, 
   saveDocumentTemplate, 
   deleteDocumentTemplate, 
+  setDefaultDocumentTemplate,
   resetDocumentTemplates,
   getStoredMedia,
   saveMediaItem,
@@ -58,7 +60,7 @@ import {
   getMargins,
   saveMargins
 } from '../utils/storage';
-import { extractDocxAsHtml, renderDocxToContainer } from '../utils/docxReader';
+import { extractDocxAsHtml, renderDocxToContainer, extractImagesInDocOrder, injectImageSrcs } from '../utils/docxReader';
 import { setupTableColumnResize } from '../utils/tableColumnResize';
 import { aiExecuteBracketPrompt } from '../lib/aiAgent';
 
@@ -249,8 +251,21 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
           setupTableColumnResize(el);
         });
     } else if (tpl.originalDocxHtml) {
-      // Buka template tersimpan: pakai HTML simpanan (termasuk gambar yang disisipkan & editan)
+      // Buka template tersimpan: pakai HTML simpanan (termasuk editan user),
+      // lalu suntik ulang src gambar dari base64 bila ada <img> tanpa src
+      // (template lama yang tersimpan sebelum perbaikan logo).
       el.innerHTML = tpl.originalDocxHtml;
+      const needsImgs = el.querySelector('img:not([src]), img[src^="blob:"]');
+      if (needsImgs && tpl.originalDocxBase64) {
+        const b64 = tpl.originalDocxBase64;
+        (async () => {
+          try {
+            const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            const ordered = await extractImagesInDocOrder(buf.buffer as ArrayBuffer);
+            injectImageSrcs(el, ordered);
+          } catch (e) { console.warn('Suntik gambar template tersimpan gagal:', e); }
+        })();
+      }
       setupTableColumnResize(el);
     } else if (tpl.originalDocxBase64) {
       const base64 = tpl.originalDocxBase64;
@@ -1116,6 +1131,14 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     triggerNotice(`Template "${name}" berhasil dihapus.`);
   };
 
+  const handleSetDefault = (id: string) => {
+    setDefaultDocumentTemplate(id);
+    const updated = getStoredDocumentTemplates();
+    setTemplates(updated);
+    const tpl = updated.find((t) => t.id === id);
+    triggerNotice(`Template "${tpl?.name}" dijadikan default di Generator.`);
+  };
+
   // Reset to Defaults
   const handleResetToDefaults = () => {
     const confirmed = window.confirm('Kosongkan seluruh daftar template? Semua template akan dihapus.');
@@ -1389,6 +1412,11 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
             <div className="p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
+                  {tpl.isDefault && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      ⭐ Default
+                    </span>
+                  )}
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
                     {tpl.docType}
                   </span>
@@ -1400,6 +1428,14 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSetDefault(tpl.id)}
+                    className={`p-1 rounded-lg ${tpl.isDefault ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`}
+                    title={tpl.isDefault ? 'Template default (aktif di Generator)' : 'Jadikan template default'}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${tpl.isDefault ? 'fill-amber-400' : ''}`} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleExportSingle(tpl)}
