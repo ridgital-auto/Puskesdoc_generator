@@ -1151,7 +1151,12 @@ export const GeneratorView: React.FC<GeneratorViewProps> = ({
             const { html: fallbackHtml, filledCount } = applyFillsToTemplate(prep.placeholderHtml, fillRes.fills, prep.markers);
             if (activeDoc.originalDocxBase64 && ooxmlFills.length > 0) {
               try {
-                const filledBlob = await fillDocxOoxml(activeDoc.originalDocxBase64, ooxmlFills);
+                // Sinkronkan [...] dari HTML ke .docx asli, lalu isi via OOXML.
+                // Hasil: hanya bagian [...] yang berubah, struktur lain 100% utuh.
+                const { syncMarkersToDocx } = await import('../utils/syncMarkersToDocx');
+                const liveHtml = getLiveDocxHtml() || activeDoc.originalDocxHtml || '';
+                const { base64: syncedBase64 } = await syncMarkersToDocx(liveHtml, activeDoc.originalDocxBase64);
+                const filledBlob = await fillDocxOoxml(syncedBase64, ooxmlFills);
                 const offscreen = document.createElement('div');
                 await renderDocxToContainer(filledBlob, offscreen);
                 filledHtml = offscreen.innerHTML;

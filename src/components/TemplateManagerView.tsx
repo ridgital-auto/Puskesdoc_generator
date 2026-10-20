@@ -1092,12 +1092,9 @@ export const TemplateManagerView: React.FC<TemplateManagerViewProps> = ({
     let templateToSave = { ...editingTemplate };
     if (docxEditorRef.current && docxDisplayMode === 'original_docx') {
       const newHtml = docxEditorRef.current.innerHTML;
-      // Jika HTML berubah, berkas Word lama jadi BASI → kosongkan.
-      // (Regenerasi .docx dari HTML bersifat lossy untuk tata letak gambar;
-      // lebih aman pakai HTML hasil edit sebagai acuan generate & unduh.)
-      if (newHtml !== editingTemplate.originalDocxHtml) {
-        templateToSave.originalDocxBase64 = undefined;
-      }
+      // JANGAN hapus originalDocxBase64: .docx asli dipertahankan sebagai acuan
+      // fill OOXML (hanya [...] yang diubah, struktur lain 100% utuh).
+      // Marker [...] disinkronkan ke .docx saat generate, bukan saat save.
       templateToSave.originalDocxHtml = newHtml;
     }
 

@@ -36,11 +36,13 @@ function getPageProperties() {
 export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Promise<void> {
   const dlFileName = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`;
 
-  // 1) Mode isi-template + file Word asli tersedia: isi [...] langsung di
-  //    berkas asli → 100% sama persis (tabel, kop, header/footer, gambar).
+  // 1) Mode isi-template + file Word asli tersedia: sinkronkan [...] ke berkas
+  //    asli lalu isi via OOXML → hanya [...] yang berubah, 100% sama persis.
   if (doc.originalDocxBase64 && doc.templateFillOoxml?.fills?.length) {
     try {
-      const blob = await fillDocxOoxml(doc.originalDocxBase64, doc.templateFillOoxml.fills);
+      const { syncMarkersToDocx } = await import('./syncMarkersToDocx');
+      const { base64: synced } = await syncMarkersToDocx(doc.originalDocxHtml || '', doc.originalDocxBase64);
+      const blob = await fillDocxOoxml(synced, doc.templateFillOoxml.fills);
       downloadBlob(blob, dlFileName);
       return;
     } catch (err) {
@@ -404,10 +406,12 @@ export async function exportToDocx(doc: PuskesDoc, profile: FaskesProfile): Prom
 export async function generateDocxBlob(doc: PuskesDoc, profile: FaskesProfile): Promise<{ blob: Blob; fileName: string }> {
   const ooxmlFileName = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, '_').substring(0, 40)}.docx`;
 
-  // Mode isi-template + file Word asli: pakai berkas asli (fidelity 100%)
+  // Mode isi-template + file Word asli: sinkronkan [...] lalu isi via OOXML (fidelity 100%)
   if (doc.originalDocxBase64 && doc.templateFillOoxml?.fills?.length) {
     try {
-      const blob = await fillDocxOoxml(doc.originalDocxBase64, doc.templateFillOoxml.fills);
+      const { syncMarkersToDocx } = await import('./syncMarkersToDocx');
+      const { base64: synced } = await syncMarkersToDocx(doc.originalDocxHtml || '', doc.originalDocxBase64);
+      const blob = await fillDocxOoxml(synced, doc.templateFillOoxml.fills);
       return { blob, fileName: ooxmlFileName };
     } catch (err) {
       console.warn('OOXML fill gagal, pakai jalur biasa:', err);

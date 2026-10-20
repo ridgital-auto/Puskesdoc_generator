@@ -28,8 +28,8 @@ function escapeRegExp(s: string): string {
 
 /** Buat pola fleksibel: spasi di penanda boleh beda jumlah di XML. */
 function markerPattern(marker: string): RegExp {
-  const flex = escapeRegExp(marker).replace(/\s+/g, '\\s+');
-  return new RegExp(`\\[\\s*${flex}\\s*\\]`);
+  // marker sudah berpola "[[FILL_n]]" — cukup escape, jangan bungkus \[ \] lagi.
+  return new RegExp(escapeRegExp(marker).replace(/\s+/g, '\\s+'));
 }
 
 interface TextNodeMap {
